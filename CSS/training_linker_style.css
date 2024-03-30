@@ -1,0 +1,11 @@
+.res_set_small {
+    max-width: 90px !important;
+    min-width: 70px !important;
+    min-height: 70px !important;
+    border-radius: 10px;
+    background: var(--rc_btn_dark) !important;
+}
+
+.res_set_small:hover {
+    background: var(--rc_btn_dark_hover) !important;
+}

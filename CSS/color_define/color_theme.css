@@ -1,0 +1,72 @@
+.my_color_theme {
+    --rc_green_norm: #64af4e;
+    --rc_green_light: #9ade85;
+    --rc_green_dark: #407531;
+    --rc_green_bright: #40fa0c;
+
+    --rc_blue_norm: #39a9b7;
+    --rc_blue_light: #67deee;
+    --rc_blue_dark: #1b636c;
+    --rc_blue_bright: #12d4f5;
+
+
+    --rc_yellow_norm: #c2a614;
+    --rc_yellow_light: #f5de70;
+    --rc_yellow_dark: #ad9318;
+    --rc_yellow_bright: #ffd300;
+
+
+    --rc_red_norm: #f14747;
+    --rc_red_light: #d05656;
+    --rc_red_dark: #8a1111;
+
+    --rc_gray_norm: #818181;
+    --rc_gray_light: #b7b7b7;
+    --rc_gray_dark: #3d3d3d;
+
+    --rc_orange_norm: #bd6e3b;
+    --rc_orange_light: #d5a17c;
+    --rc_orange_dark: #854e2b;
+    --rc_orange_bright: #ff6200;
+
+
+    --rc_purple_norm: #8237c9;
+    --rc_purple_light: #a86ee1;
+    --rc_purple_dark: #51118d;
+    --rc_purple_dark1: #2f134d;
+    --rc_purple_bright: #8400ff;
+
+    --rc_outline_color: #b2b09e;
+
+    --rc_purple_bg: rgba(66, 46, 72, 0.73);
+
+    --rc_dark_bg: #1a1d23;
+
+    --rc_comm_btn: #36455b;
+    --rc_comm_btn_hover: #526581;
+
+    --rc_btn_dark: #2b3f4b;
+    --rc_btn_dark_hover: #485c69;
+    --rc_btn_dark_active: #38586b;
+
+    --rc_overlay_background: rgba(25, 35, 51, 0.9);
+
+    --rc_opt_bg: rgba(37, 37, 37, 0.5);
+
+    --rc_data_set_title: #4e6296;
+    --rc_data_p_list_bg: #2a2d41;
+
+
+    --rc_p_item_high: rgba(255, 0, 0, 0.44);
+    --rc_p_item_m_high: rgba(255, 196, 0,  0.44);
+    --rc_p_item_norm: rgba(130, 255, 0,  0.44);
+    --rc_p_item_m_low: rgba(0, 196, 255,  0.44);
+    --rc_p_item_low: rgba(0, 57, 255,  0.44);
+
+    --set_name_list: #485083;
+    --set_name_list_hover: #6f87e3;
+    --set_name_list_active: #9097bf;
+    --set_name_list_opt_btn: #beb25b;
+    --set_list_opt_btn_hover: #ddd287;
+    --set_list_grid_item: #20222f;
+}
