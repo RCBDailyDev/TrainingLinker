@@ -1,4 +1,4 @@
-.res_set_small {
+.tl_set_small {
     max-width: 90px !important;
     min-width: 70px !important;
     min-height: 70px !important;
@@ -6,6 +6,36 @@
     background: var(--rc_btn_dark) !important;
 }
 
-.res_set_small:hover {
+.tl_set_small:hover {
     background: var(--rc_btn_dark_hover) !important;
+}
+
+.tl_btn_small_green {
+    max-width: 120px;
+    background: var(--rc_green_norm);
+    outline: solid 1px var(--rc_outline_color);
+    margin: 6px;
+    border-radius: 6px;
+}
+
+.tl_btn_common_green {
+    background: var(--rc_green_norm);
+    outline: solid 1px var(--rc_outline_color);
+    margin: 6px;
+    border-radius: 6px;
+}
+
+.tl_btn_common_red {
+    background: var(--rc_red_norm);
+    outline: solid 1px var(--rc_outline_color);
+    margin: 6px;
+    border-radius: 6px;
+}
+
+
+.tl_btn_common_blue {
+    background: var(--rc_blue_norm);
+    outline: solid 1px var(--rc_outline_color);
+    margin: 6px;
+    border-radius: 6px;
 }

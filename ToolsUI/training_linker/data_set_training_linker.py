@@ -27,8 +27,8 @@ class DataSetTrainingLinker(TabBase):
         with gr.Group():
             with gr.Row():
                 self.dd_cfg_list = gr.Dropdown(label=dsmc.TRAIN_CFG, choices=[], interactive=True)
-                self.btn_reload_cfg = gr.Button(value="\U0001f504", elem_classes="res_set_small")
-                self.btn_open_cfg_path = gr.Button(value="\U0001f4c2", elem_classes="res_set_small")
+                self.btn_reload_cfg = gr.Button(value="\U0001f504", elem_classes="tl_set_small")
+                self.btn_open_cfg_path = gr.Button(value="\U0001f4c2", elem_classes="tl_set_small")
                 self.btn_load_cfg = gr.Button(value="LoadCfg")
 
             with gr.Row() as self.row_detail:
@@ -183,12 +183,12 @@ class DataSetTrainingLinker(TabBase):
                     with gr.Row():
                         self.base_model = gr.Textbox(label="BaseModel", interactive=True)
                         self.__RegisterUI("base_model", self.base_model)
-                        self.btn_open_source_model_choose = gr.Button(value="\U0001f4c2", elem_classes="res_set_small")
-                        self.btn_choose_last = gr.Button(value="ChooseLastModel", elem_classes="dsm_btn_small_green")
+                        self.btn_open_source_model_choose = gr.Button(value="\U0001f4c2", elem_classes="tl_set_small")
+                        self.btn_choose_last = gr.Button(value="ChooseLastModel", elem_classes="tl_btn_small_green")
                     with gr.Row():
                         self.vae = gr.Textbox(label="VaeModel", interactive=True)
                         self.__RegisterUI("vae", self.vae)
-                        self.btn_open_vae_choose = gr.Button(value="\U0001f4c2", elem_classes='res_set_small')
+                        self.btn_open_vae_choose = gr.Button(value="\U0001f4c2", elem_classes='tl_set_small')
                     with gr.Row():
                         self.cus_lr_schedule = gr.Textbox(label="LRSchedule", interactive=True)
                         self.__RegisterUI("cus_lr_schedule", self.cus_lr_schedule)
@@ -240,9 +240,19 @@ class DataSetTrainingLinker(TabBase):
                         self.debiased_estimation_loss = gr.Checkbox(label="debiased_estimation_loss", value=False)
                         self.__RegisterUI("debiased_estimation_loss", self.debiased_estimation_loss)
                     with gr.Row():
-                        self.btn_save = gr.Button(value="SaveCfg", elem_classes="dsm_btn_common_blue")
-                        self.btn_run = gr.Button(value="Run", elem_classes="dsm_btn_common_green")
-                        self.btn_stop = gr.Button(value="Stop", elem_classes="dsm_btn_common_red")
+                        self.btn_print_cmd = gr.Button(value="PrintCmd", elem_classes="tl_btn_common_blue", interactive=True)
+                    with gr.Row():
+                        self.btn_save = gr.Button(value="SaveCfg", elem_classes="tl_btn_common_blue")
+
+                        self.btn_run_standlone = gr.Button(value="RunS", elem_classes="tl_btn_common_green",
+                                                           visible=self.standalone)
+                        self.btn_stop_standlone = gr.Button(value="StopS", elem_classes="tl_btn_common_red",
+                                                            visible=self.standalone)
+
+                        self.btn_run = gr.Button(value="Run", elem_classes="tl_btn_common_green",
+                                                 visible=not self.standalone)
+                        self.btn_stop = gr.Button(value="Stop", elem_classes="tl_btn_common_red",
+                                                  visible=not self.standalone)
                     with gr.Row():
                         self.btn_get_lora_cfg = gr.Button(value="GetLoraCFG")
                     with gr.Group():
@@ -261,9 +271,10 @@ class DataSetTrainingLinker(TabBase):
     def impl_ui_logic(self):
         dataset_tab = tm.get_tab_mgr().getTab("DataSetMgrTab")
 
+        self.btn_print_cmd.click(lambda: print(self.__MakeCmdDB()))
         def btn_reload_cfg_click():
             if self.standalone:
-                root_path = "../../TrainDataPath"
+                root_path = os.getcwd() + "/TrainDataPath"
             else:
                 root_path = self.root_path
             return gr.update(choices=self.GetCfgList(root_path))
@@ -312,10 +323,11 @@ class DataSetTrainingLinker(TabBase):
             self.__LoadCfg(cfg_file_path)
 
             ui_state_list = []
-            for k, _v in self.ui_kv.items():
+            for k, v in self.ui_kv.items():
                 if k in self.cfg_obj:
                     ui_state_list.append(gr.update(value=self.cfg_obj[k]))
                 else:
+                    self.cfg_obj[k] = v.value
                     ui_state_list.append(gr.skip())
             if "noise_offset_type" in self.cfg_obj:
                 if self.cfg_obj["noise_offset_type"] == "Original":
@@ -514,6 +526,15 @@ class DataSetTrainingLinker(TabBase):
 
         self.btn_run.click(fn=btn_train_click, inputs=[self.tx_train_ip, self.tx_train_port, self.ch_debug_dataset])
 
+        def btn_run_standlone_click():
+            print(f"Start training Dreambooth...")
+            run_cmd = "accelerate launch"
+            if self.cfg_obj['sdxl']:
+                run_cmd += " --config sdxl"
+            pass
+
+        self.btn_run_standlone.click(fn=btn_run_standlone_click)
+
         def btn_stop_click(ip, port):
             client = Client("http://{}:{}/".format(ip, port))
             result = client.predict(
@@ -524,26 +545,38 @@ class DataSetTrainingLinker(TabBase):
 
         self.btn_open_cfg_path.click(lambda: util.open_folder(os.path.join(self.root_path, dsmc.TRAIN_CFG), False))
 
-    def __ImplConfigUpdate(self):
-        def set_value(obj, k, v):
-            obj[k] = v
 
+    def __MakeCmdDB(self):
+        cmd = "accelerate launch"
+        cmd += f" --num_cpu_threads_per_process={2}"
+        if self.cfg_obj["sdxl"]:
+            cmd += " \"" + os.path.join(os.getcwd(), "sd-script", "sdxl_train.py") + "\""
+        else:
+            cmd += " \"" + os.path.join(os.getcwd(), "sd-script", "train_db.py") + "\""
+        return cmd
+
+    def __ImplConfigUpdate(self):
+        key_list = list(self.ui_kv.keys())
         for key, ui in self.ui_kv.items():
             if key == "noise_offset_type":
-                def noise_offset_type_change(noise_offset_type):
-                    self.cfg_obj[key] = noise_offset_type
-                    if noise_offset_type == 'Original':
-                        return (
-                            gr.update(visible=True),
-                            gr.update(visible=False),
-                        )
-                    else:
-                        return (
-                            gr.update(visible=False),
-                            gr.update(visible=True),
-                        )
+                def set_value_c(k):
+                    def noise_offset_type_change(noise_offset_type):
+
+                        self.cfg_obj[k] = noise_offset_type
+                        if noise_offset_type == 'Original':
+                            return (
+                                gr.update(visible=True),
+                                gr.update(visible=False),
+                            )
+                        else:
+                            return (
+                                gr.update(visible=False),
+                                gr.update(visible=True),
+                            )
+                    return noise_offset_type_change
+
                 ui.change(
-                    noise_offset_type_change,
+                    set_value_c(key),
                     inputs=[ui],
                     outputs=[
                         self.noise_offset_original,
@@ -551,7 +584,12 @@ class DataSetTrainingLinker(TabBase):
                     ],
                 )
             else:
-                ui.change(fn=lambda v: set_value(self.cfg_obj, key, v), inputs=[ui])
+                def set_value_c(k):
+                    def set_value(v):
+                        self.cfg_obj[k] = v
+                    return set_value
+
+                ui.change(fn=set_value_c(key), inputs=[ui])
 
     def __RegisterUI(self, key, ui):
         if (key, ui) not in self.ui_kv:
