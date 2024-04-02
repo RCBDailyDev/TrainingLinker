@@ -9,7 +9,7 @@ from ToolsUI import data_set_mgr_constant as dsmc
 from gradio_client import Client
 from ToolsUI.tab_base import TabBase
 import ToolsUI.tab_mgr as tm
-import data_set_cmd_maker
+import ToolsUI.training_linker.data_set_cmd_maker as data_set_cmd_maker
 
 
 class DataSetTrainingLinker(TabBase):
@@ -84,6 +84,7 @@ class DataSetTrainingLinker(TabBase):
                             label='Max resolution',
                             value='1024,1024',
                             placeholder='1024,1024',
+                            interactive=True
                         )
                         self.__RegisterUI("max_resolution", self.max_resolution)
                     with gr.Row():
@@ -96,7 +97,7 @@ class DataSetTrainingLinker(TabBase):
                             step=1,
                             interactive=True
                         )
-                        self.__RegisterUI("max_resolution", self.gradient_accumulation_steps)
+                        self.__RegisterUI("gradient_accumulation_steps", self.gradient_accumulation_steps)
                         self.max_token_length = gr.Dropdown(
                             label='Max Token Length',
                             choices=[

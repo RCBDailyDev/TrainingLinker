@@ -2,3 +2,6 @@
 WHL
 venv
 TrainDataPath
+*.pyc
+sd-script/sdxl_train.py.bak
+*.bak

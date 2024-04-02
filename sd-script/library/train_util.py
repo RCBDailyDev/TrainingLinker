@@ -3412,6 +3412,14 @@ def add_dataset_arguments(
             default=1,
             help="repeat dataset when training with captions / キャプションでの学習時にデータセットを繰り返す回数",
         )
+    # add by RCB
+    parser.add_argument(
+        "--cus_lr_schedule",
+        type=str,
+        default="",
+        help="Custom lr Schedule List",
+    )
+    # ^add by RCB
 
 
 def add_sd_saving_arguments(parser: argparse.ArgumentParser):
@@ -3851,6 +3859,7 @@ def get_scheduler_fix(args, optimizer: Optimizer, num_processes: int):
     name = args.lr_scheduler
     num_warmup_steps: Optional[int] = args.lr_warmup_steps
     num_training_steps = args.max_train_steps * num_processes  # * args.gradient_accumulation_steps
+    num_training_steps = args.max_train_epochs  # * args.gradient_accumulation_steps
     num_cycles = args.lr_scheduler_num_cycles
     power = args.lr_scheduler_power
 
@@ -4792,6 +4801,7 @@ def sample_images_common(
             if steps % args.sample_every_n_steps != 0 or epoch is not None:  # steps is not divisible or end of epoch
                 return
 
+    from win11toast import notify
     logger.info("")
     logger.info(f"generating sample images at step / サンプル画像生成 ステップ: {steps}")
     if not os.path.isfile(args.sample_prompts):
@@ -4842,6 +4852,7 @@ def sample_images_common(
     )
     pipeline.to(distributed_state.device)
     save_dir = args.output_dir + "/sample"
+    save_dir = os.path.dirname(args.sample_prompts)
     os.makedirs(save_dir, exist_ok=True)
 
     # preprocess prompts

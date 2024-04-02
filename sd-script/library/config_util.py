@@ -556,7 +556,7 @@ def generate_dataset_group_by_blueprint(dataset_group_blueprint: DatasetGroupBlu
 
 def generate_dreambooth_subsets_config_by_subdirs(train_data_dir: Optional[str] = None, reg_data_dir: Optional[str] = None):
     def extract_dreambooth_params(name: str) -> Tuple[int, str]:
-        tokens = name.split("_")
+        tokens = name.split('_')
         try:
             n_repeats = int(tokens[0])
         except ValueError as e:
@@ -564,6 +564,25 @@ def generate_dreambooth_subsets_config_by_subdirs(train_data_dir: Optional[str] 
             return 0, ""
         caption_by_folder = "_".join(tokens[1:])
         return n_repeats, caption_by_folder
+
+    def deal_subset(base_dir, cfg_l, is_reg):
+        base_dir_p: Path = Path(base_dir)
+        sub_dir_l = []
+        for subdir in base_dir_p.iterdir():
+            if subdir.is_dir():
+                sub_dir_l.append(subdir)
+        if len(sub_dir_l) > 0:
+            for subdir in sub_dir_l:
+                if not subdir.is_dir():
+                    continue
+                deal_subset(subdir, cfg_l, is_reg)
+        else:
+            num_repeats, class_tokens = extract_dreambooth_params(base_dir_p.name)
+            if num_repeats >= 1:
+                subset_config = {"image_dir": str(base_dir_p), "num_repeats": num_repeats, "is_reg": is_reg,
+                                 "class_tokens": class_tokens}
+
+                cfg_l.append(subset_config)
 
     def generate(base_dir: Optional[str], is_reg: bool):
         if base_dir is None:
@@ -574,16 +593,18 @@ def generate_dreambooth_subsets_config_by_subdirs(train_data_dir: Optional[str] 
             return []
 
         subsets_config = []
-        for subdir in base_dir.iterdir():
-            if not subdir.is_dir():
-                continue
-
-            num_repeats, class_tokens = extract_dreambooth_params(subdir.name)
-            if num_repeats < 1:
-                continue
-
-            subset_config = {"image_dir": str(subdir), "num_repeats": num_repeats, "is_reg": is_reg, "class_tokens": class_tokens}
-            subsets_config.append(subset_config)
+        deal_subset(base_dir, subsets_config, is_reg)
+        # for subdir in base_dir.iterdir():
+        #     if not subdir.is_dir():
+        #         continue
+        #
+        #     num_repeats, class_tokens = extract_dreambooth_params(subdir.name)
+        #     if num_repeats < 1:
+        #         continue
+        #
+        #     subset_config = {"image_dir": str(subdir), "num_repeats": num_repeats, "is_reg": is_reg,
+        #                      "class_tokens": class_tokens}
+        #     subsets_config.append(subset_config)
 
         return subsets_config
 

@@ -6,6 +6,7 @@ import os
 from multiprocessing import Value
 from typing import List
 import toml
+from torch.optim.lr_scheduler import LambdaLR
 
 from tqdm import tqdm
 
@@ -45,6 +46,54 @@ from library.sdxl_original_unet import SdxlUNet2DConditionModel
 
 UNET_NUM_BLOCKS_FOR_BLOCK_LR = 23
 
+
+
+init_lr = 1.5e-6
+min_lr = 8e-7
+decay_step = 2
+
+# lr_rate_list = [(1, 40), (0.5, 40), (0.2, 40), (0.1, 40), (0.01, 40)]
+lr_rate_list = [(1.0, 30.0), (0.5, 30.0), (0.2, 20.0), (0.1, 20.0)]  # 100
+def my_lr_sheduler(optimizer, num_training_steps, cycle_steps, stage_list, last_epoch=-1, step_in=5, decay_in=10, min_rate=0):
+    """
+    Create a schedule with a learning rate that decreases linearly from the initial lr set in the optimizer to 0, after
+    a warmup period during which it increases linearly from 0 to the initial lr set in the optimizer.
+
+    Args:
+        optimizer ([`~torch.optim.Optimizer`]):
+            The optimizer for which to schedule the learning rate.
+        num_warmup_steps (`int`):
+            The number of steps for the warmup phase.
+        num_training_steps (`int`):
+            The total number of training steps.
+        last_epoch (`int`, *optional*, defaults to -1):
+            The index of the last epoch when resuming training.
+
+    Return:
+        `torch.optim.lr_scheduler.LambdaLR` with the appropriate schedule.
+    """
+    step = step_in
+    decay = decay_in
+
+    def lr_lambda(current_step: int):
+        # warm_steps = 10
+        # if current_step < warm_steps:
+        #     return 0.5
+        # total_steps = num_training_steps - warm_steps
+        # steps_per_s = math.ceil(total_steps / step)
+        # current_step2 = max(current_step - warm_steps, 0)
+        # c_step = int(current_step2 / steps_per_s)
+
+        # z = min(1.0, max(0.0, (float(current_step)/num_training_steps) - 0.8) / 0.2)
+        # r = 1 * (0.5 ** c_step)
+        # c = math.cos((float(current_step2) / steps_per_s) * 2.0 * math.pi*5.0) * 0.5 + 0.5
+        # r = r * (0.75 + (1.25 - 0.75) * c)
+        for (lr, s) in stage_list:
+            if (float(current_step) / num_training_steps) < (float(s) / cycle_steps):
+                return lr
+        return stage_list[-1][0]
+
+    return LambdaLR(optimizer, lr_lambda, last_epoch)
 
 def get_block_params_to_optimize(unet: SdxlUNet2DConditionModel, block_lrs: List[float]) -> List[dict]:
     block_params = [[] for _ in range(len(block_lrs))]
@@ -99,6 +148,30 @@ def train(args):
     sdxl_train_util.verify_sdxl_training_args(args)
     setup_logging(args, reset=True)
 
+
+    # add by RCB
+    # parse lr schedule
+    global lr_rate_list
+    schedule_l = args.cus_lr_schedule
+    if schedule_l:
+        schedule_l = schedule_l.strip().split(',')
+        try:
+            lr_rate_list = []
+            c = len(schedule_l)
+            for s in range(0, c, 2):
+                lr_rate_list.append((float(schedule_l[s]), float(schedule_l[s + 1])))
+        except:
+            ValueError("lr_schedule parse failed!!!!!")
+    print(lr_rate_list)
+    cycle_steps = 0
+    stage_list = []
+    for idx, (lr, steps) in enumerate(lr_rate_list):
+        cycle_steps += steps
+        stage_list.append((lr, cycle_steps))
+    ##TODO:DELETE
+    print("stage_list", stage_list)
+
+    # ^add by RCB
     assert (
         not args.weighted_captions
     ), "weighted_captions is not supported currently / weighted_captionsは現在サポートされていません"
@@ -380,6 +453,13 @@ def train(args):
     # lr schedulerを用意する
     lr_scheduler = train_util.get_scheduler_fix(args, optimizer, accelerator.num_processes)
 
+    #add by RCB
+    num_update_steps_per_epoch = math.ceil(
+        len(train_dataloader) / args.gradient_accumulation_steps)
+    num_train_epochs = math.ceil(args.max_train_steps / num_update_steps_per_epoch)
+    lr_scheduler = my_lr_sheduler(optimizer, num_train_epochs, cycle_steps, stage_list, -1, decay_step, 5)
+    #^ add by RCB
+
     # 実験的機能：勾配も含めたfp16/bf16学習を行う　モデル全体をfp16/bf16にする
     if args.full_fp16:
         assert (
@@ -474,13 +554,14 @@ def train(args):
     )
 
     loss_recorder = train_util.LossRecorder()
+    true_step = 0
     for epoch in range(num_train_epochs):
         accelerator.print(f"\nepoch {epoch+1}/{num_train_epochs}")
         current_epoch.value = epoch + 1
 
         for m in training_models:
             m.train()
-
+        loss_total = 0
         for step, batch in enumerate(train_dataloader):
             current_step.value = global_step
             with accelerator.accumulate(*training_models):
@@ -602,7 +683,7 @@ def train(args):
                     accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
 
                 optimizer.step()
-                lr_scheduler.step()
+
                 optimizer.zero_grad(set_to_none=True)
 
             # Checks if the accelerator has performed an optimization step behind the scenes
@@ -654,16 +735,20 @@ def train(args):
                 else:
                     append_block_lr_to_logs(block_lrs, logs, lr_scheduler, args.optimizer_type)  # U-Net is included in block_lrs
 
-                accelerator.log(logs, step=global_step)
+                accelerator.log(logs, step=true_step)
+                true_step += 1
 
+            # TODO moving averageにする
+            loss_total += current_loss
             loss_recorder.add(epoch=epoch, step=step, loss=current_loss)
-            avr_loss: float = loss_recorder.moving_average
-            logs = {"avr_loss": avr_loss}  # , "lr": lr_scheduler.get_last_lr()[0]}
+            avr_loss = loss_total / (step + 1)
+            process = int((step+1) / (len(train_dataloader)) * 100)
+            logs = {"loss": avr_loss, "lr": float(lr_scheduler.get_last_lr()[0]),"lrt1": float(lr_scheduler.get_last_lr()[1]),"lrt2": float(lr_scheduler.get_last_lr()[2]),"p:":process}  # , "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
 
             if global_step >= args.max_train_steps:
                 break
-
+        lr_scheduler.step()
         if args.logging_dir is not None:
             logs = {"loss/epoch": loss_recorder.moving_average}
             accelerator.log(logs, step=epoch + 1)
