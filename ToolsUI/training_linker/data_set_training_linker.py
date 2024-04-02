@@ -9,6 +9,7 @@ from ToolsUI import data_set_mgr_constant as dsmc
 from gradio_client import Client
 from ToolsUI.tab_base import TabBase
 import ToolsUI.tab_mgr as tm
+import data_set_cmd_maker
 
 
 class DataSetTrainingLinker(TabBase):
@@ -240,7 +241,8 @@ class DataSetTrainingLinker(TabBase):
                         self.debiased_estimation_loss = gr.Checkbox(label="debiased_estimation_loss", value=False)
                         self.__RegisterUI("debiased_estimation_loss", self.debiased_estimation_loss)
                     with gr.Row():
-                        self.btn_print_cmd = gr.Button(value="PrintCmd", elem_classes="tl_btn_common_blue", interactive=True)
+                        self.btn_print_cmd = gr.Button(value="PrintCmd", elem_classes="tl_btn_common_blue",
+                                                       interactive=True)
                     with gr.Row():
                         self.btn_save = gr.Button(value="SaveCfg", elem_classes="tl_btn_common_blue")
 
@@ -270,8 +272,8 @@ class DataSetTrainingLinker(TabBase):
 
     def impl_ui_logic(self):
         dataset_tab = tm.get_tab_mgr().getTab("DataSetMgrTab")
+        self.btn_print_cmd.click(lambda: print(data_set_cmd_maker.make_db_cmd(self.cfg_obj)))
 
-        self.btn_print_cmd.click(lambda: print(self.__MakeCmdDB()))
         def btn_reload_cfg_click():
             if self.standalone:
                 root_path = os.getcwd() + "/TrainDataPath"
@@ -545,16 +547,6 @@ class DataSetTrainingLinker(TabBase):
 
         self.btn_open_cfg_path.click(lambda: util.open_folder(os.path.join(self.root_path, dsmc.TRAIN_CFG), False))
 
-
-    def __MakeCmdDB(self):
-        cmd = "accelerate launch"
-        cmd += f" --num_cpu_threads_per_process={2}"
-        if self.cfg_obj["sdxl"]:
-            cmd += " \"" + os.path.join(os.getcwd(), "sd-script", "sdxl_train.py") + "\""
-        else:
-            cmd += " \"" + os.path.join(os.getcwd(), "sd-script", "train_db.py") + "\""
-        return cmd
-
     def __ImplConfigUpdate(self):
         key_list = list(self.ui_kv.keys())
         for key, ui in self.ui_kv.items():
@@ -573,6 +565,7 @@ class DataSetTrainingLinker(TabBase):
                                 gr.update(visible=False),
                                 gr.update(visible=True),
                             )
+
                     return noise_offset_type_change
 
                 ui.change(
@@ -587,6 +580,7 @@ class DataSetTrainingLinker(TabBase):
                 def set_value_c(k):
                     def set_value(v):
                         self.cfg_obj[k] = v
+
                     return set_value
 
                 ui.change(fn=set_value_c(key), inputs=[ui])
