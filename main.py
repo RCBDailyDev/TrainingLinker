@@ -13,7 +13,7 @@ sys.path.append(os.path.dirname(__file__))
 import gradio as gr
 import util.common_util as util
 import ToolsUI.tab_mgr as tm
-import ToolsUI.training_linker.data_set_training_linker as data_set_training_linker
+import ToolsUI.training_linker.train_linker as data_set_training_linker
 
 GradioTemplateResponseOriginal = None
 

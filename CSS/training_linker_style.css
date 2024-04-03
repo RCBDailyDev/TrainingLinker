@@ -39,3 +39,10 @@
     margin: 6px;
     border-radius: 6px;
 }
+.tl_btn_mid_blue {
+    background: var(--rc_blue_dark);
+    outline: solid 1px var(--rc_outline_color);
+    margin: 6px;
+    border-radius: 6px;
+    max-width: 60px;
+}

@@ -9,7 +9,9 @@ from ToolsUI import data_set_mgr_constant as dsmc
 from gradio_client import Client
 from ToolsUI.tab_base import TabBase
 import ToolsUI.tab_mgr as tm
-import ToolsUI.training_linker.data_set_cmd_maker as data_set_cmd_maker
+import ToolsUI.training_linker.train_linker_cmd_maker as data_set_cmd_maker
+import ToolsUI.training_linker.train_linker_cfg_mgr as train_linker_cfg_mgr
+import ToolsUI.training_linker.train_linker_excecutor as train_linker_executor
 
 
 class DataSetTrainingLinker(TabBase):
@@ -18,7 +20,11 @@ class DataSetTrainingLinker(TabBase):
         self.root_path = ""
         self.tab_name = "DataSetTrainingLinker"
         self.standalone = standalone
+        self.cmd_executor = train_linker_executor.CommandExecutor()
+        if standalone:
+            self.root_path = os.getcwd() + "/TrainDataPath"
         self.ui_kv = {}
+        self.cfg = train_linker_cfg_mgr.TrainCfgDreamBooth()
         self.create_tab_ui()
         self.impl_change_save_logic(self.tab_name)
         self.__ImplConfigUpdate()
@@ -26,15 +32,28 @@ class DataSetTrainingLinker(TabBase):
 
     def create_tab_ui(self):
         with gr.Group():
-            with gr.Row():
-                self.dd_cfg_list = gr.Dropdown(label=dsmc.TRAIN_CFG, choices=[], interactive=True)
-                self.btn_reload_cfg = gr.Button(value="\U0001f504", elem_classes="tl_set_small")
-                self.btn_open_cfg_path = gr.Button(value="\U0001f4c2", elem_classes="tl_set_small")
-                self.btn_load_cfg = gr.Button(value="LoadCfg")
+            with gr.Accordion("CFG Manager") as self.cfg_manager:
+                with gr.Row():
+                    self.dd_cfg_list = gr.Dropdown(label=dsmc.TRAIN_CFG, choices=[], interactive=True)
+                    self.btn_reload_cfg = gr.Button(value="\U0001f504", elem_classes="tl_set_small")
+                    self.btn_open_cfg_path = gr.Button(value="\U0001f4c2", elem_classes="tl_set_small")
+                    self.btn_load_cfg = gr.Button(value="LoadCfg", elem_classes="tl_btn_mid_blue")
+                    self.btn_new_cfg = gr.Button(value="NewCfg", elem_classes="tl_btn_mid_blue")
 
             with gr.Row() as self.row_detail:
                 self.row_detail.visible = False
+
                 with gr.Column():
+                    with gr.Row():
+                        with gr.Row():
+                            self.lb_cfg_name = gr.Label(label="CfgName")
+                            self.btn_cfg_copy = gr.Button(value="Copy", interactive=True,
+                                                          elem_classes="tl_btn_mid_blue")
+                        with gr.Row():
+                            self.tx_cfg_re_name = gr.Textbox(label="Rename", interactive=True)
+                            self.btn_cfg_re_name = gr.Button(value="Rename", interactive=True,
+                                                             elem_classes="tl_btn_mid_blue")
+
                     with gr.Row():
                         self.sdxl = gr.Checkbox(
                             label='SDXL', value=True, interactive=True
@@ -273,7 +292,7 @@ class DataSetTrainingLinker(TabBase):
 
     def impl_ui_logic(self):
         dataset_tab = tm.get_tab_mgr().getTab("DataSetMgrTab")
-        self.btn_print_cmd.click(lambda: print(data_set_cmd_maker.make_db_cmd(self.cfg_obj)))
+        self.btn_print_cmd.click(lambda: print(data_set_cmd_maker.make_db_cmd(self.cfg.cfg_obj)))
 
         def btn_reload_cfg_click():
             if self.standalone:
@@ -315,6 +334,52 @@ class DataSetTrainingLinker(TabBase):
 
         self.btn_get_lora_cfg.click(fn=btn_get_lora_cfg_click)
 
+        def get_unique_filepath(filepath):
+            # 如果文件不存在，直接返回原文件路径
+            if not os.path.exists(filepath):
+                return filepath
+
+            # 如果文件存在，添加数字后缀
+            base, extension = os.path.splitext(filepath)
+            counter = 1
+
+            while os.path.exists(filepath):
+                filepath = f"{base}_{counter}{extension}"
+                counter += 1
+
+            return filepath
+
+        def btn_new_cfg_click():
+            file_name = "NewCfg.json"
+            cfg_file_path = os.path.join(self.root_path, dsmc.TRAIN_CFG, file_name)
+            cfg_file_path = get_unique_filepath(cfg_file_path)
+            self.cfg = train_linker_cfg_mgr.TrainCfgDreamBooth()
+            self.cfg.save_cfg(cfg_file_path)
+            r1 = btn_load_cfg_click(os.path.basename(cfg_file_path))
+            return r1 + [gr.update(interactive=True, choices=self.GetCfgList(self.root_path),
+                                   value=os.path.basename(cfg_file_path))]
+
+        self.btn_new_cfg.click(fn=btn_new_cfg_click, outputs=
+        [self.row_detail] + self.__GetUIList() + [self.dd_cfg_list])
+
+        def btn_cfg_rename_click(new_name):
+            self.cfg.change_name(new_name)
+            r1 = btn_load_cfg_click(self.cfg.file_name)
+            return r1 + [gr.update(interactive=True, choices=self.GetCfgList(self.root_path),
+                                   value=self.cfg.file_name)]
+
+        self.btn_cfg_re_name.click(fn=btn_cfg_rename_click, inputs=[self.tx_cfg_re_name],
+                                   outputs=[self.row_detail] + self.__GetUIList() + [self.dd_cfg_list])
+
+        def btn_cfg_copy_click():
+            new_path = self.cfg.copy()
+            r1 = btn_load_cfg_click(os.path.basename(new_path))
+            return r1 + [gr.update(interactive=True, choices=self.GetCfgList(self.root_path),
+                                   value=os.path.basename(new_path))]
+
+        self.btn_cfg_copy.click(fn=btn_cfg_copy_click,
+                                outputs=[self.row_detail] + self.__GetUIList() + [self.dd_cfg_list])
+
         def btn_load_cfg_click(cfg_name):
             ui_count = len(self.__GetUIList())
             skip_list = [gr.skip()] * ui_count
@@ -327,13 +392,13 @@ class DataSetTrainingLinker(TabBase):
 
             ui_state_list = []
             for k, v in self.ui_kv.items():
-                if k in self.cfg_obj:
-                    ui_state_list.append(gr.update(value=self.cfg_obj[k]))
+                if k in self.cfg.cfg_obj:
+                    ui_state_list.append(gr.update(value=self.cfg.cfg_obj[k]))
                 else:
-                    self.cfg_obj[k] = v.value
+                    self.cfg.cfg_obj[k] = v.value
                     ui_state_list.append(gr.skip())
-            if "noise_offset_type" in self.cfg_obj:
-                if self.cfg_obj["noise_offset_type"] == "Original":
+            if "noise_offset_type" in self.cfg.cfg_obj:
+                if self.cfg.cfg_obj["noise_offset_type"] == "Original":
                     ui_state_list.append(gr.update(visible=True))
                     ui_state_list.append(gr.update(visible=False))
                 else:
@@ -342,6 +407,9 @@ class DataSetTrainingLinker(TabBase):
             else:
                 ui_state_list.append(gr.update(visible=False))
                 ui_state_list.append(gr.update(visible=True))
+            ui_state_list.append(gr.update(value=self.cfg.file_name))
+            ui_state_list.append(gr.update(value=os.path.splitext(self.cfg.file_name)[0]))
+
             return [gr.update(visible=True)] + ui_state_list
 
         self.btn_load_cfg.click(fn=btn_load_cfg_click, inputs=[self.dd_cfg_list],
@@ -349,14 +417,13 @@ class DataSetTrainingLinker(TabBase):
 
         def btn_save_click(cfg_name):
             cfg_file_path = os.path.join(self.root_path, dsmc.TRAIN_CFG, cfg_name)
-            self.__SaveCfg(cfg_file_path)
-            ##TODO:DELETE
+            self.cfg.save_cfg(cfg_file_path)
             print("SaveCFG!")
 
         self.btn_save.click(fn=btn_save_click, inputs=[self.dd_cfg_list])
 
         def btn_open_source_model_choose_click():
-            fpath = util.openfile_dialog(self.cfg_obj["output_dir"], default_extension=".safetensors",
+            fpath = util.openfile_dialog(self.cfg.cfg_obj["output_dir"], default_extension=".safetensors",
                                          extension_name="safetensors")
             if fpath:
                 return fpath.replace("/", "\\")
@@ -367,7 +434,7 @@ class DataSetTrainingLinker(TabBase):
                                                 outputs=[self.base_model], show_progress="hidden")
 
         def btn_open_vae_choose_click():
-            fpath = util.openfile_dialog(self.cfg_obj['vae'], default_extension=".safetensors",
+            fpath = util.openfile_dialog(self.cfg.cfg_obj['vae'], default_extension=".safetensors",
                                          extension_name="safetensors")
             if fpath:
                 return fpath.replace("/", "\\")
@@ -378,7 +445,7 @@ class DataSetTrainingLinker(TabBase):
 
         def btn_choose_last_click():
             # find all ckpt
-            output_path = self.cfg_obj["output_dir"]
+            output_path = self.cfg.cfg_obj["output_dir"]
             if not os.path.exists(output_path) or not os.path.isdir(output_path):
                 return gr.skip()
             ckpt_list = []
@@ -403,7 +470,7 @@ class DataSetTrainingLinker(TabBase):
             #  os.path.join(path_mgr.GetTrainCFGPath(), "Label_True.json"),
 
             # deal output dir
-            output_dir_root = self.cfg_obj['output_dir']
+            output_dir_root = self.cfg.cfg_obj['output_dir']
             if not output_dir_root:
                 print("Output Dir Not Available")
                 return
@@ -424,104 +491,6 @@ class DataSetTrainingLinker(TabBase):
             client = Client("http://{}:{}/".format(ip, port))
             result = client.predict(
                 {"label": "False"},
-                {"label": "False"},
-                self.cfg_obj['pretrained_model_name_or_path'],
-                self.cfg_obj['v2'],
-                self.cfg_obj['v_parameterization'],
-                self.cfg_obj['sdxl'],
-                self.cfg_obj['logging_dir'],
-                self.cfg_obj['train_data_dir'],
-                self.cfg_obj['reg_data_dir'],
-                final_output_dir,  # self.cfg_obj['output_dir'],
-                self.cfg_obj['max_resolution'],
-                self.cfg_obj['learning_rate'],
-                self.cfg_obj['learning_rate_te1'],
-                self.cfg_obj['learning_rate_te1'],
-                self.cfg_obj['learning_rate_te2'],
-                self.cfg_obj['lr_scheduler'],
-                self.cfg_obj['lr_warmup'],
-                self.cfg_obj['train_batch_size'],
-                self.cfg_obj['epoch'],
-                self.cfg_obj['save_every_n_epochs'],
-                self.cfg_obj['mixed_precision'],
-                self.cfg_obj['save_precision'],
-                self.cfg_obj['seed'],
-                self.cfg_obj['num_cpu_threads_per_process'],
-                self.cfg_obj['cache_latents'],
-                self.cfg_obj['cache_latents_to_disk'],
-                self.cfg_obj['caption_extension'],
-                self.cfg_obj['enable_bucket'],
-                self.cfg_obj['gradient_checkpointing'],
-                self.cfg_obj['full_fp16'],
-                self.cfg_obj['full_bf16'],
-                self.cfg_obj['no_token_padding'],
-                0,
-                self.cfg_obj['min_bucket_reso'],
-                self.cfg_obj['max_bucket_reso'],
-                self.cfg_obj['xformers'],
-                self.cfg_obj['save_model_as'],
-                self.cfg_obj['shuffle_caption'],
-                self.cfg_obj['save_state'],
-                self.cfg_obj['resume'],
-                self.cfg_obj['prior_loss_weight'],
-                self.cfg_obj['color_aug'],
-                self.cfg_obj['flip_aug'],
-                self.cfg_obj['clip_skip'],
-                self.cfg_obj['vae'],
-                1,
-                1,
-                False,
-                "",
-                self.cfg_obj['output_name'],
-                self.cfg_obj['max_token_length'],
-                self.cfg_obj['max_train_epochs'],
-                self.cfg_obj['max_train_steps'],
-                self.cfg_obj['max_data_loader_n_workers'],
-                self.cfg_obj['mem_eff_attn'],
-                self.cfg_obj['gradient_accumulation_steps'],
-                self.cfg_obj['model_list'],
-                self.cfg_obj['keep_tokens'],
-                self.cfg_obj['lr_scheduler_num_cycles'],
-                self.cfg_obj['lr_scheduler_power'],
-                self.cfg_obj['persistent_data_loader_workers'],
-                self.cfg_obj['bucket_no_upscale'],
-                self.cfg_obj['random_crop'],
-                self.cfg_obj['bucket_reso_steps'],
-                self.cfg_obj['v_pred_like_loss'],
-                self.cfg_obj['caption_dropout_every_n_epochs'],
-                self.cfg_obj['caption_dropout_rate'],
-                self.cfg_obj['optimizer'],
-                self.cfg_obj['optimizer_args'],
-                self.cfg_obj['lr_scheduler_args'],
-                self.cfg_obj['noise_offset_type'],
-                self.cfg_obj['noise_offset'],
-                self.cfg_obj['adaptive_noise_scale'],
-                self.cfg_obj['multires_noise_iterations'],
-                self.cfg_obj['multires_noise_discount'],
-                self.cfg_obj['sample_every_n_steps'],
-                self.cfg_obj['sample_every_n_epochs'],
-                self.cfg_obj['sample_sampler'],
-                self.cfg_obj['sample_prompts'],
-                self.cfg_obj['additional_parameters'] + "--debug_dataset" if debug_dataset else "",
-                self.cfg_obj['vae_batch_size'],
-                self.cfg_obj['min_snr_gamma'],
-                self.cfg_obj['weighted_captions'],
-                self.cfg_obj['save_every_n_steps'],
-                self.cfg_obj['save_last_n_steps'],
-                self.cfg_obj['save_last_n_steps_state'],
-                self.cfg_obj['use_wandb'],
-                self.cfg_obj['wandb_api_key'],
-                self.cfg_obj['scale_v_pred_loss_like_noise_pred'],
-                self.cfg_obj['min_timestep'],
-                self.cfg_obj['max_timestep'],
-                self.cfg_obj['sample_tx_train_dir'],
-                self.cfg_obj['cus_num_drop_tag_epoch'],
-                self.cfg_obj['cus_sl_tag_drop_rate'],
-                self.cfg_obj['cus_tx_keep_tags'],
-                self.cfg_obj['cus_num_keep_tag_count'],
-                self.cfg_obj['cus_ch_adv_tag_dropout'],
-                self.cfg_obj['cus_lr_schedule'],
-
                 api_name="/train_db"
             )
             ##TODO:DELETE
@@ -531,10 +500,24 @@ class DataSetTrainingLinker(TabBase):
 
         def btn_run_standlone_click():
             print(f"Start training Dreambooth...")
-            run_cmd = "accelerate launch"
-            if self.cfg_obj['sdxl']:
-                run_cmd += " --config sdxl"
-            pass
+            output_dir_root = self.cfg.cfg_obj['output_dir']
+            if not output_dir_root:
+                print("Output Dir Not Available")
+                return
+            if not os.path.exists(output_dir_root) or not os.path.isdir(output_dir_root):
+                print("Output Dir Not Available")
+                return
+            # get time string
+            import time
+            timestamp = time.time()
+            time_tuple = time.localtime(timestamp)
+            formatted_time = time.strftime("%m-%d-%H-%M-%S", time_tuple)
+
+            final_output_dir = os.path.join(output_dir_root, formatted_time)
+            os.makedirs(final_output_dir, exist_ok=True)
+            print("Output Model to: ", final_output_dir)
+            self.__SaveTrainTrainInfo(final_output_dir, formatted_time)
+            self.cmd_executor.execute_command(data_set_cmd_maker.make_db_cmd(self.cfg.cfg_obj))
 
         self.btn_run_standlone.click(fn=btn_run_standlone_click)
 
@@ -545,6 +528,8 @@ class DataSetTrainingLinker(TabBase):
             )
 
         self.btn_stop.click(fn=btn_stop_click, inputs=[self.tx_train_ip, self.tx_train_port])
+
+        self.btn_stop_standlone.click(fn=lambda: self.cmd_executor.kill_command())
 
         self.btn_open_cfg_path.click(lambda: util.open_folder(os.path.join(self.root_path, dsmc.TRAIN_CFG), False))
 
@@ -580,7 +565,7 @@ class DataSetTrainingLinker(TabBase):
             else:
                 def set_value_c(k):
                     def set_value(v):
-                        self.cfg_obj[k] = v
+                        self.cfg.cfg_obj[k] = v
 
                     return set_value
 
@@ -609,18 +594,18 @@ class DataSetTrainingLinker(TabBase):
         return ret_list
 
     def __LoadCfg(self, path):
-        with open(path, 'r') as temp:
-            self.cfg_obj = json.load(temp)
-            if "tx_train_port" not in self.cfg_obj:
-                self.cfg_obj["tx_train_port"] = "7862"
-            if "tx_train_ip" not in self.cfg_obj:
-                self.cfg_obj["tx_train_ip"] = "127.0.0.1"
-            self.cfg_obj["logging_dir"] = os.path.join(self.root_path, dsmc.LOG_PATH)
-            self.cfg_obj["sample_tx_train_dir"] = os.path.join(self.root_path, dsmc.SAM_DATA_PATH)
-            self.cfg_obj["train_data_dir"] = os.path.join(self.root_path, dsmc.TRAIN_PATH)
+        self.cfg.load_cfg(path)
+        if "tx_train_port" not in self.cfg.cfg_obj:
+            self.cfg.cfg_obj["tx_train_port"] = "7862"
+        if "tx_train_ip" not in self.cfg.cfg_obj:
+            self.cfg.cfg_obj["tx_train_ip"] = "127.0.0.1"
+        self.cfg.cfg_obj["logging_dir"] = os.path.join(self.root_path, dsmc.LOG_PATH)
+        self.cfg.cfg_obj["sample_tx_train_dir"] = os.path.join(self.root_path, dsmc.SAM_DATA_PATH)
+        self.cfg.cfg_obj["train_data_dir"] = os.path.join(self.root_path, dsmc.TRAIN_PATH)
 
     def __GetUIList(self):
-        return list(self.ui_kv.values()) + [self.noise_offset_original, self.noise_offset_multires]
+        return list(self.ui_kv.values()) + [self.noise_offset_original, self.noise_offset_multires, self.lb_cfg_name,
+                                            self.tx_cfg_re_name]
 
     def __SaveCfg(self, path):
         with open(path, 'w') as file:
@@ -638,7 +623,7 @@ class DataSetTrainingLinker(TabBase):
         os.makedirs(cfg_path, exist_ok=True)
 
     def __SaveTrainTrainInfo(self, save_path, time_str):
-        source_model = self.cfg_obj["pretrained_model_name_or_path"]
+        source_model = self.cfg.cfg_obj["base_model"]
         info_obj = {}
         if source_model and os.path.exists(source_model):
             info_obj["base_model"] = os.path.basename(source_model)
@@ -646,7 +631,7 @@ class DataSetTrainingLinker(TabBase):
             modified_time = datetime.datetime.fromtimestamp(base_mode_time)
             formatted_time = modified_time.strftime('%Y-%m-%d %H:%M:%S')
             info_obj["base_model_date"] = formatted_time
-        train_img_path = self.cfg_obj['train_data_dir']
+        train_img_path = self.cfg.cfg_obj['train_data_dir']
         if train_img_path and os.path.exists(train_img_path):
             prompt_stat = {}
             img_count = 0
