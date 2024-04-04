@@ -12,6 +12,7 @@ import ToolsUI.tab_mgr as tm
 import ToolsUI.training_linker.train_linker_cmd_maker as data_set_cmd_maker
 import ToolsUI.training_linker.train_linker_cfg_mgr as train_linker_cfg_mgr
 import ToolsUI.training_linker.train_linker_excecutor as train_linker_executor
+import ToolsUI.training_linker.train_linker_train_info_anylize as train_info_anylize
 
 
 class DataSetTrainingLinker(TabBase):
@@ -263,6 +264,9 @@ class DataSetTrainingLinker(TabBase):
                     with gr.Row():
                         self.btn_print_cmd = gr.Button(value="PrintCmd", elem_classes="tl_btn_common_blue",
                                                        interactive=True)
+                        self.btn_print_train_info = gr.Button(value="PrintTrainInfo",
+                                                              elem_classes="tl_btn_common_orange",
+                                                              interactive=True)
                     with gr.Row():
                         self.btn_save = gr.Button(value="SaveCfg", elem_classes="tl_btn_common_blue")
 
@@ -275,8 +279,6 @@ class DataSetTrainingLinker(TabBase):
                                                  visible=not self.standalone)
                         self.btn_stop = gr.Button(value="Stop", elem_classes="tl_btn_common_red",
                                                   visible=not self.standalone)
-                    with gr.Row():
-                        self.btn_get_lora_cfg = gr.Button(value="GetLoraCFG")
                     with gr.Group():
                         with gr.Row():
                             self.num_start_lr = gr.Number(label="Start Learning Rate", minimum=0, value=1,
@@ -289,10 +291,18 @@ class DataSetTrainingLinker(TabBase):
                             self.num_cool_step = gr.Number(label="Cool Step", minimum=1, value=1, interactive=True)
                         with gr.Row():
                             self.btn_gen_lr_schedule_list = gr.Button(value="GenSchedule")
+        self.json_cmd_json = gr.Json(label="CmdJson", visible=False)
+        self.btn_run_api = gr.Button(visible=False)
 
     def impl_ui_logic(self):
         dataset_tab = tm.get_tab_mgr().getTab("DataSetMgrTab")
         self.btn_print_cmd.click(lambda: print(data_set_cmd_maker.make_db_cmd(self.cfg.cfg_obj)))
+
+        def btn_print_train_info_click():
+            train_info_anylize.get_train_info(self.cfg.cfg_obj)
+            pass
+
+        self.btn_print_train_info.click(fn=btn_print_train_info_click)
 
         def btn_reload_cfg_click():
             if self.standalone:
@@ -323,17 +333,6 @@ class DataSetTrainingLinker(TabBase):
                                                     self.num_warmup_step, self.num_cool_step],
                                             outputs=[self.cus_lr_schedule])
 
-        def btn_get_lora_cfg_click():
-            self.__CheckLoraCfgPath()
-            cfg_list = self.__GetLoraCfgList()
-            cfg_path = os.path.join(self.root_path, "TrainLoraCfg", cfg_list[0])
-            # with open(cfg_path, 'r') as temp:
-            #     template_obj = json.load(temp)
-            import pyperclip
-            pyperclip.copy(cfg_path)
-
-        self.btn_get_lora_cfg.click(fn=btn_get_lora_cfg_click)
-
         def get_unique_filepath(filepath):
             # 如果文件不存在，直接返回原文件路径
             if not os.path.exists(filepath):
@@ -348,6 +347,8 @@ class DataSetTrainingLinker(TabBase):
                 counter += 1
 
             return filepath
+
+        self.dd_cfg_list.change(fn=lambda v: gr.update(visible=False), outputs=[self.row_detail])
 
         def btn_new_cfg_click():
             file_name = "NewCfg.json"
@@ -521,6 +522,33 @@ class DataSetTrainingLinker(TabBase):
 
         self.btn_run_standlone.click(fn=btn_run_standlone_click)
 
+        def btn_run_standlone_click():
+            print(f"Start training Dreambooth...")
+            output_dir_root = self.cfg.cfg_obj['output_dir']
+            if not output_dir_root:
+                print("Output Dir Not Available")
+                return
+            if not os.path.exists(output_dir_root) or not os.path.isdir(output_dir_root):
+                print("Output Dir Not Available")
+                return
+            # get time string
+            import time
+            timestamp = time.time()
+            time_tuple = time.localtime(timestamp)
+            formatted_time = time.strftime("%m-%d-%H-%M-%S", time_tuple)
+
+            final_output_dir = os.path.join(output_dir_root, formatted_time)
+            os.makedirs(final_output_dir, exist_ok=True)
+            print("Output Model to: ", final_output_dir)
+            self.__SaveTrainTrainInfo(final_output_dir, formatted_time)
+            self.cmd_executor.execute_command(data_set_cmd_maker.make_db_cmd(self.cfg.cfg_obj))
+
+        self.btn_run_standlone.click(fn=btn_run_standlone_click)
+        def btn_run_api_click(cfg_obj):
+            self.cmd_executor.execute_command(data_set_cmd_maker.make_db_cmd(cfg_obj))
+
+        self.btn_run_api.click(fn=btn_run_api_click, inputs=[self.json_cmd_json], api_name="tran_db")
+
         def btn_stop_click(ip, port):
             client = Client("http://{}:{}/".format(ip, port))
             result = client.predict(
@@ -529,7 +557,7 @@ class DataSetTrainingLinker(TabBase):
 
         self.btn_stop.click(fn=btn_stop_click, inputs=[self.tx_train_ip, self.tx_train_port])
 
-        self.btn_stop_standlone.click(fn=lambda: self.cmd_executor.kill_command())
+        self.btn_stop_standlone.click(fn=lambda: self.cmd_executor.kill_command(), api_name="stop_db")
 
         self.btn_open_cfg_path.click(lambda: util.open_folder(os.path.join(self.root_path, dsmc.TRAIN_CFG), False))
 
@@ -669,19 +697,6 @@ class DataSetTrainingLinker(TabBase):
         if len(ret_list) <= 0:
             self.__CreateDefaultCfg()
             ret_list.append("Default.json")
-        return ret_list
-
-    def __GetLoraCfgList(self):
-        cfg_path = os.path.join(self.root_path, dsmc.LORA_CFG)
-        ret_list = []
-        dir_l = os.listdir(cfg_path)
-        for d in dir_l:
-            if os.path.isfile(os.path.join(cfg_path, d)):
-                if d.endswith(".json"):
-                    ret_list.append(d)
-        if len(ret_list) <= 0:
-            self.__CreateDefaultCfg("DefaultLora", dsmc.LORA_CFG, "DefaultLoraCfg.json")
-            ret_list.append("DefaultLora.json")
         return ret_list
 
     def __CreateDefaultCfg(self, file_name_in="Default", default_path_name=dsmc.TRAIN_CFG,

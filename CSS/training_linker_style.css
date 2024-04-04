@@ -46,3 +46,10 @@
     border-radius: 6px;
     max-width: 60px;
 }
+
+.tl_btn_common_orange {
+    background: var(--rc_orange_norm);
+    outline: solid 1px var(--rc_outline_color);
+    margin: 6px;
+    border-radius: 6px;
+}
