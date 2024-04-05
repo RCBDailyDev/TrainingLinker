@@ -121,4 +121,11 @@ class TrainCfgDreamBooth(TrainCfgBase):
             "xformers": "sdpa",
             "debiased_estimation_loss": False,
             "gradient_accumulation_steps": "1",
+            "logging_dir": "",
+            "sample_tx_train_dir": "",
+            "train_data_dir": "",
+            "output_dir": "",
+            "base_model": "",
+            "vae": "",
+
         }

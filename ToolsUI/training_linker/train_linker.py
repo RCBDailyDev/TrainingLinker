@@ -262,6 +262,8 @@ class DataSetTrainingLinker(TabBase):
                         self.debiased_estimation_loss = gr.Checkbox(label="debiased_estimation_loss", value=False)
                         self.__RegisterUI("debiased_estimation_loss", self.debiased_estimation_loss)
                     with gr.Row():
+                        self.tx_train_info = gr.Textbox(label="TrainInfo", interactive=False)
+                    with gr.Row():
                         self.btn_print_cmd = gr.Button(value="PrintCmd", elem_classes="tl_btn_common_blue",
                                                        interactive=True)
                         self.btn_print_train_info = gr.Button(value="PrintTrainInfo",
@@ -299,10 +301,10 @@ class DataSetTrainingLinker(TabBase):
         self.btn_print_cmd.click(lambda: print(data_set_cmd_maker.make_db_cmd(self.cfg.cfg_obj)))
 
         def btn_print_train_info_click():
-            train_info_anylize.get_train_info(self.cfg.cfg_obj)
-            pass
+            r = train_info_anylize.get_train_info(self.cfg.cfg_obj)
+            return r
 
-        self.btn_print_train_info.click(fn=btn_print_train_info_click)
+        self.btn_print_train_info.click(fn=btn_print_train_info_click, outputs=[self.tx_train_info])
 
         def btn_reload_cfg_click():
             if self.standalone:
@@ -348,7 +350,7 @@ class DataSetTrainingLinker(TabBase):
 
             return filepath
 
-        self.dd_cfg_list.change(fn=lambda v: gr.update(visible=False), outputs=[self.row_detail])
+        self.dd_cfg_list.change(fn=lambda: gr.update(visible=False), outputs=[self.row_detail])
 
         def btn_new_cfg_click():
             file_name = "NewCfg.json"
@@ -489,9 +491,10 @@ class DataSetTrainingLinker(TabBase):
             print("Output Model to: ", final_output_dir)
             self.__SaveTrainTrainInfo(final_output_dir, formatted_time)
 
+            self.cfg.cfg_obj["output_dir"] = final_output_dir
             client = Client("http://{}:{}/".format(ip, port))
             result = client.predict(
-                {"label": "False"},
+                self.cfg.cfg_obj,
                 api_name="/train_db"
             )
             ##TODO:DELETE
@@ -544,10 +547,13 @@ class DataSetTrainingLinker(TabBase):
             self.cmd_executor.execute_command(data_set_cmd_maker.make_db_cmd(self.cfg.cfg_obj))
 
         self.btn_run_standlone.click(fn=btn_run_standlone_click)
-        def btn_run_api_click(cfg_obj):
-            self.cmd_executor.execute_command(data_set_cmd_maker.make_db_cmd(cfg_obj))
 
-        self.btn_run_api.click(fn=btn_run_api_click, inputs=[self.json_cmd_json], api_name="tran_db")
+        def btn_run_api_click(cfg_obj):
+            cmd = data_set_cmd_maker.make_db_cmd(cfg_obj)
+            print(cmd)
+            self.cmd_executor.execute_command(cmd)
+
+        self.btn_run_api.click(fn=btn_run_api_click, inputs=[self.json_cmd_json], api_name="train_db")
 
         def btn_stop_click(ip, port):
             client = Client("http://{}:{}/".format(ip, port))

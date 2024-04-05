@@ -146,6 +146,7 @@ def make_db_cmd(cfg_obj):
     make_prompt_file(cfg_obj["sample_tx_train_dir"])
     cmd += " --sample_prompts=\"{}\"".format(cfg_obj["sample_tx_train_dir"] + "\\sample\\prompt.json")
     cmd += " --sample_every_n_epochs=\"{}\"".format(cfg_obj["sample_every_n_epochs"])
+    cmd += " --save_every_n_epochs=\"{}\"".format(cfg_obj["save_every_n_epochs"])
     cmd += " --sample_sampler=euler_a"
 
     if cfg_obj["ch_debug_dataset"]:

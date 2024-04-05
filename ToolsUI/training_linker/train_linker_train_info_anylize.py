@@ -31,8 +31,8 @@ def get_train_info(cfg_object):
                 if f.endswith((".png", ".jpg")):
                     total_img += 1
                     step_per_epoch += repeat
-
-    ##TODO:DELETE
-    print(f"Total Image: {total_img}")
-    print(f"Steps: {step_per_epoch}")
-    print("Total Steps: {}".format(step_per_epoch * cfg_object["max_train_epochs"]))
+    r = ""
+    r += f"Total Image: {total_img}\n"
+    r += f"Steps: {step_per_epoch}\n"
+    r += "Total Steps: {}\n".format(step_per_epoch * cfg_object["max_train_epochs"])
+    return r
