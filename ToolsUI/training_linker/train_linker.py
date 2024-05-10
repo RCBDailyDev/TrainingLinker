@@ -525,33 +525,31 @@ class DataSetTrainingLinker(TabBase):
 
         self.btn_run_standlone.click(fn=btn_run_standlone_click)
 
-        def btn_run_standlone_click():
-            print(f"Start training Dreambooth...")
-            output_dir_root = self.cfg.cfg_obj['output_dir']
-            if not output_dir_root:
-                print("Output Dir Not Available")
-                return
-            if not os.path.exists(output_dir_root) or not os.path.isdir(output_dir_root):
-                print("Output Dir Not Available")
-                return
-            # get time string
-            import time
-            timestamp = time.time()
-            time_tuple = time.localtime(timestamp)
-            formatted_time = time.strftime("%m-%d-%H-%M-%S", time_tuple)
-
-            final_output_dir = os.path.join(output_dir_root, formatted_time)
-            os.makedirs(final_output_dir, exist_ok=True)
-            print("Output Model to: ", final_output_dir)
-            self.__SaveTrainTrainInfo(final_output_dir, formatted_time)
-            self.cmd_executor.execute_command(data_set_cmd_maker.make_db_cmd(self.cfg.cfg_obj))
-
-        self.btn_run_standlone.click(fn=btn_run_standlone_click)
+        # def btn_run_standlone_click():
+        #     print(f"Start training Dreambooth...")
+        #     output_dir_root = self.cfg.cfg_obj['output_dir']
+        #     if not output_dir_root:
+        #         print("Output Dir Not Available")
+        #         return
+        #     if not os.path.exists(output_dir_root) or not os.path.isdir(output_dir_root):
+        #         print("Output Dir Not Available")
+        #         return
+        #     # get time string
+        #     import time
+        #     timestamp = time.time()
+        #     time_tuple = time.localtime(timestamp)
+        #     formatted_time = time.strftime("%m-%d-%H-%M-%S", time_tuple)
+        #
+        #     final_output_dir = os.path.join(output_dir_root, formatted_time)
+        #     os.makedirs(final_output_dir, exist_ok=True)
+        #     print("Output Model to: ", final_output_dir)
+        #     self.__SaveTrainTrainInfo(final_output_dir, formatted_time)
+        #     self.cmd_executor.execute_command(data_set_cmd_maker.make_db_cmd(self.cfg.cfg_obj))
+        #
+        # self.btn_run_standlone.click(fn=btn_run_standlone_click)
 
         def btn_run_api_click(cfg_obj):
-            cmd = data_set_cmd_maker.make_db_cmd(cfg_obj)
-            print(cmd)
-            self.cmd_executor.execute_command(cmd)
+            self.cmd_executor.execute_command(data_set_cmd_maker.make_db_cmd(cfg_obj))
 
         self.btn_run_api.click(fn=btn_run_api_click, inputs=[self.json_cmd_json], api_name="train_db")
 

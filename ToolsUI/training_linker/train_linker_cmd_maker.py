@@ -16,7 +16,7 @@ def parse_param(s):
     return 768, 768
 
 
-info_list = []
+
 
 
 def find_image(txt_path):
@@ -30,6 +30,7 @@ def find_image(txt_path):
 
 
 def make_prompt_file(sample_path):
+    info_list = []
     sample_prompts_path = sample_path + "\\sample\\prompt.json"
     if sample_path:
         path_list = []
@@ -77,7 +78,6 @@ def make_prompt_file(sample_path):
             sample_prompt = os.path.join(sample_path, "sample", 'prompt.txt')
             with open(sample_prompt, 'w') as fp:
                 fp.write(txt)
-
         with open(sample_prompts_path, 'w') as f:
             json.dump(info_list, f)
 
