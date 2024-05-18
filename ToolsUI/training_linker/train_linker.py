@@ -480,7 +480,7 @@ class DataSetTrainingLinker(TabBase):
             if not os.path.exists(output_dir_root) or not os.path.isdir(output_dir_root):
                 print("Output Dir Not Available")
                 return
-            # get time string
+            #get time string
             import time
             timestamp = time.time()
             time_tuple = time.localtime(timestamp)
@@ -491,7 +491,7 @@ class DataSetTrainingLinker(TabBase):
             print("Output Model to: ", final_output_dir)
             self.__SaveTrainTrainInfo(final_output_dir, formatted_time)
 
-            self.cfg.cfg_obj["output_dir"] = final_output_dir
+            ##self.cfg.cfg_obj["output_dir"] = final_output_dir
             client = Client("http://{}:{}/".format(ip, port))
             result = client.predict(
                 self.cfg.cfg_obj,

@@ -91,12 +91,12 @@ def make_db_cmd(cfg_obj):
         cmd += " \"" + os.path.join(os.getcwd(), "sd-script", "train_db.py") + "\""
 
     cmd += f" --bucket_no_upscale"
-    cmd += f" --bucket_reso_steps={64}"
+    cmd += f" --bucket_reso_steps={256}"
     cmd += f" --cache_latents"
     cmd += f" --caption_extension=\".txt\""
     cmd += f" --enable_bucket"
-    cmd += f" --min_bucket_reso={256}"
-    cmd += f" --max_bucket_reso={2048}"
+    cmd += f" --min_bucket_reso={768}"
+    cmd += f" --max_bucket_reso={1024}"
 
     if cfg_obj["mixed_precision"] == "fp16":
         cmd += f" --mixed_precision=\"fp16\""
@@ -136,7 +136,10 @@ def make_db_cmd(cfg_obj):
     cmd += " --train_batch_size=\"{}\"".format(1)
     cmd += " --train_data_dir=\"{}\"".format(cfg_obj["train_data_dir"])
     cmd += " --vae=\"{}\"".format(cfg_obj["vae"])
-    cmd += " --train_text_encoder --sample_at_first"
+    cmd += " --train_text_encoder"
+    cmd += " --sample_at_first"
+
+
 
     if cfg_obj["xformers"]:
         cmd += " --{}".format(cfg_obj["xformers"])
