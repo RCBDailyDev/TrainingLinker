@@ -12,11 +12,13 @@ from tqdm import tqdm
 
 import torch
 from library.device_utils import init_ipex, clean_memory_on_device
+
+
 init_ipex()
 
 from accelerate.utils import set_seed
 from diffusers import DDPMScheduler
-from library import sdxl_model_util
+from library import deepspeed_utils, sdxl_model_util
 
 import library.train_util as train_util
 
@@ -146,6 +148,7 @@ def train(args):
     train_util.verify_training_args(args)
     train_util.prepare_dataset_args(args, True)
     sdxl_train_util.verify_sdxl_training_args(args)
+    deepspeed_utils.prepare_deepspeed_args(args)
     setup_logging(args, reset=True)
 
 
@@ -197,7 +200,7 @@ def train(args):
 
     # データセットを準備する
     if args.dataset_class is None:
-        blueprint_generator = BlueprintGenerator(ConfigSanitizer(True, True, False, True))
+        blueprint_generator = BlueprintGenerator(ConfigSanitizer(True, True, args.masked_loss, True))
         if args.dataset_config is not None:
             logger.info(f"Load dataset config from {args.dataset_config}")
             user_config = config_util.load_user_config(args.dataset_config)
@@ -478,18 +481,33 @@ def train(args):
         text_encoder1.to(weight_dtype)
         text_encoder2.to(weight_dtype)
 
-    # acceleratorがなんかよろしくやってくれるらしい
-    if train_unet:
-        unet = accelerator.prepare(unet)
+    # freeze last layer and final_layer_norm in te1 since we use the output of the penultimate layer
     if train_text_encoder1:
-        # freeze last layer and final_layer_norm in te1 since we use the output of the penultimate layer
         text_encoder1.text_model.encoder.layers[-1].requires_grad_(False)
         text_encoder1.text_model.final_layer_norm.requires_grad_(False)
-        text_encoder1 = accelerator.prepare(text_encoder1)
-    if train_text_encoder2:
-        text_encoder2 = accelerator.prepare(text_encoder2)
 
-    optimizer, train_dataloader, lr_scheduler = accelerator.prepare(optimizer, train_dataloader, lr_scheduler)
+    if args.deepspeed:
+        ds_model = deepspeed_utils.prepare_deepspeed_model(
+            args,
+            unet=unet if train_unet else None,
+            text_encoder1=text_encoder1 if train_text_encoder1 else None,
+            text_encoder2=text_encoder2 if train_text_encoder2 else None,
+        )
+        # most of ZeRO stage uses optimizer partitioning, so we have to prepare optimizer and ds_model at the same time. # pull/1139#issuecomment-1986790007
+        ds_model, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+            ds_model, optimizer, train_dataloader, lr_scheduler
+        )
+        training_models = [ds_model]
+
+    else:
+        # acceleratorがなんかよろしくやってくれるらしい
+        if train_unet:
+            unet = accelerator.prepare(unet)
+        if train_text_encoder1:
+            text_encoder1 = accelerator.prepare(text_encoder1)
+        if train_text_encoder2:
+            text_encoder2 = accelerator.prepare(text_encoder2)
+        optimizer, train_dataloader, lr_scheduler = accelerator.prepare(optimizer, train_dataloader, lr_scheduler)
 
     # TextEncoderの出力をキャッシュするときにはCPUへ移動する
     if args.cache_text_encoder_outputs:
@@ -504,6 +522,8 @@ def train(args):
 
     # 実験的機能：勾配も含めたfp16学習を行う　PyTorchにパッチを当ててfp16でのgrad scaleを有効にする
     if args.full_fp16:
+        # During deepseed training, accelerate not handles fp16/bf16|mixed precision directly via scaler. Let deepspeed engine do.
+        # -> But we think it's ok to patch accelerator even if deepspeed is enabled.
         train_util.patch_accelerator_for_fp16_training(accelerator)
 
     # resumeする
@@ -554,14 +574,18 @@ def train(args):
     )
 
     loss_recorder = train_util.LossRecorder()
+    #Add By RCB
     true_step = 0
+    #^Add By RCB
     for epoch in range(num_train_epochs):
         accelerator.print(f"\nepoch {epoch+1}/{num_train_epochs}")
         current_epoch.value = epoch + 1
 
         for m in training_models:
             m.train()
+        #Add By RCB
         loss_total = 0
+        #^Add By RCB
         for step, batch in enumerate(train_dataloader):
             current_step.value = global_step
             with accelerator.accumulate(*training_models):
@@ -642,7 +666,7 @@ def train(args):
 
                 # Sample noise, sample a random timestep for each image, and add noise to the latents,
                 # with noise offset and/or multires noise if specified
-                noise, noisy_latents, timesteps = train_util.get_noise_noisy_latents_and_timesteps(args, noise_scheduler, latents)
+                noise, noisy_latents, timesteps, huber_c = train_util.get_noise_noisy_latents_and_timesteps(args, noise_scheduler, latents)
 
                 noisy_latents = noisy_latents.to(weight_dtype)  # TODO check why noisy_latents is not weight_dtype
 
@@ -657,9 +681,12 @@ def train(args):
                     or args.scale_v_pred_loss_like_noise_pred
                     or args.v_pred_like_loss
                     or args.debiased_estimation_loss
+                    or args.masked_loss
                 ):
                     # do not mean over batch dimension for snr weight or scale v-pred loss
-                    loss = torch.nn.functional.mse_loss(noise_pred.float(), target.float(), reduction="none")
+                    loss = train_util.conditional_loss(noise_pred.float(), target.float(), reduction="none", loss_type=args.loss_type, huber_c=huber_c)
+                    if args.masked_loss:
+                        loss = apply_masked_loss(loss, batch)
                     loss = loss.mean([1, 2, 3])
 
                     if args.min_snr_gamma:
@@ -673,7 +700,7 @@ def train(args):
 
                     loss = loss.mean()  # mean over batch dimension
                 else:
-                    loss = torch.nn.functional.mse_loss(noise_pred.float(), target.float(), reduction="mean")
+                    loss = train_util.conditional_loss(noise_pred.float(), target.float(), reduction="mean", loss_type=args.loss_type, huber_c=huber_c)
 
                 accelerator.backward(loss)
                 if accelerator.sync_gradients and args.max_grad_norm != 0.0:
@@ -797,7 +824,7 @@ def train(args):
 
     accelerator.end_training()
 
-    if args.save_state:  # and is_main_process:
+    if args.save_state or args.save_state_on_train_end:        
         train_util.save_state_on_train_end(args, accelerator)
 
     del accelerator  # この後メモリを使うのでこれは消す
@@ -829,6 +856,8 @@ def setup_parser() -> argparse.ArgumentParser:
     train_util.add_sd_models_arguments(parser)
     train_util.add_dataset_arguments(parser, True, True, True)
     train_util.add_training_arguments(parser, False)
+    train_util.add_masked_loss_arguments(parser)
+    deepspeed_utils.add_deepspeed_arguments(parser)
     train_util.add_sd_saving_arguments(parser)
     train_util.add_optimizer_arguments(parser)
     config_util.add_config_arguments(parser)
@@ -864,7 +893,6 @@ def setup_parser() -> argparse.ArgumentParser:
         help=f"learning rates for each block of U-Net, comma-separated, {UNET_NUM_BLOCKS_FOR_BLOCK_LR} values / "
         + f"U-Netの各ブロックの学習率、カンマ区切り、{UNET_NUM_BLOCKS_FOR_BLOCK_LR}個の値",
     )
-
     return parser
 
 
@@ -872,6 +900,7 @@ if __name__ == "__main__":
     parser = setup_parser()
 
     args = parser.parse_args()
+    train_util.verify_command_line_training_args(args)
     args = train_util.read_config_from_file(args, parser)
 
     train(args)
