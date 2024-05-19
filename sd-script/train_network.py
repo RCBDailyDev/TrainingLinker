@@ -8,6 +8,7 @@ import time
 import json
 from multiprocessing import Value
 import toml
+from torch.optim.lr_scheduler import LambdaLR
 
 from tqdm import tqdm
 
@@ -45,6 +46,48 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
+def my_lr_sheduler(optimizer, num_training_steps, cycle_steps, stage_list, last_epoch=-1, step_in=5, decay_in=10,
+                   min_rate=0):
+    """
+    Create a schedule with a learning rate that decreases linearly from the initial lr set in the optimizer to 0, after
+    a warmup period during which it increases linearly from 0 to the initial lr set in the optimizer.
+
+    Args:
+        optimizer ([`~torch.optim.Optimizer`]):
+            The optimizer for which to schedule the learning rate.
+        num_warmup_steps (`int`):
+            The number of steps for the warmup phase.
+        num_training_steps (`int`):
+            The total number of training steps.
+        last_epoch (`int`, *optional*, defaults to -1):
+            The index of the last epoch when resuming training.
+
+    Return:
+        `torch.optim.lr_scheduler.LambdaLR` with the appropriate schedule.
+    """
+    step = step_in
+    decay = decay_in
+
+    def lr_lambda(current_step: int):
+        # warm_steps = 10
+        # if current_step < warm_steps:
+        #     return 0.5
+        # total_steps = num_training_steps - warm_steps
+        # steps_per_s = math.ceil(total_steps / step)
+        # current_step2 = max(current_step - warm_steps, 0)
+        # c_step = int(current_step2 / steps_per_s)
+
+        # z = min(1.0, max(0.0, (float(current_step)/num_training_steps) - 0.8) / 0.2)
+        # r = 1 * (0.5 ** c_step)
+        # c = math.cos((float(current_step2) / steps_per_s) * 2.0 * math.pi*5.0) * 0.5 + 0.5
+        # r = r * (0.75 + (1.25 - 0.75) * c)
+        for (lr, s) in stage_list:
+            if (float(current_step) / num_training_steps) < (float(s) / cycle_steps):
+                return lr
+        return stage_list[-1][0]
+
+    return LambdaLR(optimizer, lr_lambda, last_epoch)
 
 class NetworkTrainer:
     def __init__(self):
@@ -134,6 +177,8 @@ class NetworkTrainer:
     def sample_images(self, accelerator, args, epoch, global_step, device, vae, tokenizer, text_encoder, unet):
         train_util.sample_images(accelerator, args, epoch, global_step, device, vae, tokenizer, text_encoder, unet)
 
+
+    lr_rate_list = [(1.0, 30.0), (0.5, 30.0), (0.2, 20.0), (0.1, 20.0)]  # 100
     def train(self, args):
         session_id = random.randint(0, 2**32)
         training_started_at = time.time()
@@ -141,6 +186,30 @@ class NetworkTrainer:
         train_util.prepare_dataset_args(args, True)
         deepspeed_utils.prepare_deepspeed_args(args)
         setup_logging(args, reset=True)
+
+        # add by RCB
+        # parse lr schedule
+        global lr_rate_list
+        schedule_l = args.cus_lr_schedule
+        if schedule_l:
+            schedule_l = schedule_l.strip().split(',')
+            try:
+                lr_rate_list = []
+                c = len(schedule_l)
+                for s in range(0, c, 2):
+                    lr_rate_list.append((float(schedule_l[s]), float(schedule_l[s + 1])))
+            except:
+                ValueError("lr_schedule parse failed!!!!!")
+        print(lr_rate_list)
+        cycle_steps = 0
+        stage_list = []
+        for idx, (lr, steps) in enumerate(lr_rate_list):
+            cycle_steps += steps
+            stage_list.append((lr, cycle_steps))
+        ##TODO:DELETE
+        print("stage_list", stage_list)
+
+        # ^add by RCB
 
         cache_latents = args.cache_latents
         use_dreambooth_method = args.in_json is None
@@ -373,7 +442,14 @@ class NetworkTrainer:
         train_dataset_group.set_max_train_steps(args.max_train_steps)
 
         # lr schedulerを用意する
-        lr_scheduler = train_util.get_scheduler_fix(args, optimizer, accelerator.num_processes)
+        ##lr_scheduler = train_util.get_scheduler_fix(args, optimizer, accelerator.num_processes)
+        # add by RCB
+        num_update_steps_per_epoch = math.ceil(
+            len(train_dataloader) / args.gradient_accumulation_steps)
+        num_train_epochs = math.ceil(args.max_train_steps / num_update_steps_per_epoch)
+        lr_scheduler = my_lr_sheduler(optimizer, num_train_epochs, cycle_steps, stage_list, -1, 2, 5)
+
+        # ^ add by RCB
 
         # 実験的機能：勾配も含めたfp16/bf16学習を行う　モデル全体をfp16/bf16にする
         if args.full_fp16:

@@ -14,11 +14,13 @@ import gradio as gr
 import util.common_util as util
 import ToolsUI.tab_mgr as tm
 import ToolsUI.training_linker.train_linker as data_set_training_linker
+import ToolsUI.training_linker.train_linker_lora as data_set_training_linker_lora
 
 GradioTemplateResponseOriginal = None
 
 
 def UI(**kwargs):
+    print("Launch TrainLinker")
     css = ''
     head = ''
 
@@ -62,6 +64,9 @@ def UI(**kwargs):
         with gr.Row(elem_classes='my_color_theme'):
             with gr.Tab("Training Linker"):
                 data_set_training_linker.DataSetTrainingLinker(standalone=True)
+            with gr.Tab("Training Linker Lora"):
+                data_set_training_linker_lora.DataSetTrainingLinkerLora(standalone=True)
+
 
         tm.get_tab_mgr().implUILogic()
 

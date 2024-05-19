@@ -2,6 +2,7 @@ import argparse
 
 import torch
 from library.device_utils import init_ipex, clean_memory_on_device
+from torch.optim.lr_scheduler import LambdaLR
 init_ipex()
 
 from library import sdxl_model_util, sdxl_train_util, train_util
@@ -31,6 +32,7 @@ class SdxlNetworkTrainer(train_network.NetworkTrainer):
         ), "network for Text Encoder cannot be trained with caching Text Encoder outputs / Text Encoderの出力をキャッシュしながらText Encoderのネットワークを学習することはできません"
 
         train_dataset_group.verify_bucket_reso_steps(32)
+
 
     def load_target_model(self, args, weight_dtype, accelerator):
         (

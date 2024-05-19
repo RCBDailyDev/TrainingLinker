@@ -129,3 +129,43 @@ class TrainCfgDreamBooth(TrainCfgBase):
             "vae": "",
 
         }
+
+
+class TrainCfgLora(TrainCfgBase):
+    def __init__(self):
+        super().__init__()
+        self.cfg_obj = {
+            "sdxl": True,
+            "learning_rate": 2e-05,
+            "text_encoder_lr": 2e-05,
+            "optimizer": "AdamW8bit",
+            "max_train_epochs": 20,
+            "save_every_n_epochs": 5,
+            "sample_every_n_epochs": 5,
+            "max_resolution": "1024,1024",
+            "max_token_length": "75",
+            "shuffle_caption": False,
+            "min_snr_gamma": 5,
+            "noise_offset_type": "Multires",
+            "noise_offset": 0.03,
+            "adaptive_noise_scale": 0.03,
+            "multires_noise_iterations": 8,
+            "multires_noise_discount": 0.3,
+            "output_name": "last",
+            "cus_lr_schedule": "1.0,1,0.9,1,0.8,1,0.7,1,0.6,1,0.5,1,0.4,1,0.3,1,0.2,1,0.1,1",
+            "ch_debug_dataset": False,
+            "mixed_precision": "bf16",
+            "save_precision": "bf16",
+            "full_16": True,
+            "xformers": "sdpa",
+            "debiased_estimation_loss": False,
+            "gradient_accumulation_steps": "1",
+            "logging_dir": "",
+            "sample_tx_train_dir": "",
+            "train_data_dir": "",
+            "output_dir": "",
+            "base_model": "",
+            "vae": "",
+            "network_dim": 128,
+            "network_alpha": 32,
+        }

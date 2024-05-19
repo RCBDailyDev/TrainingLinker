@@ -53,3 +53,7 @@
     margin: 6px;
     border-radius: 6px;
 }
+
+.tl_lora_background{
+    background: var(--rc_orange_norm);
+}
