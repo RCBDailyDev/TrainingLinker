@@ -498,7 +498,7 @@ class DataSetTrainingLinkerLora(TabBase):
             final_output_dir = os.path.join(output_dir_root, formatted_time)
             os.makedirs(final_output_dir, exist_ok=True)
             print("Output Model to: ", final_output_dir)
-            self.__SaveTrainTrainInfo(final_output_dir, formatted_time)
+            data_set_cmd_maker.save_train_info(self.cfg.cfg_obj, final_output_dir, formatted_time)
 
             ##self.cfg.cfg_obj["output_dir"] = final_output_dir
             client = Client("http://{}:{}/".format(ip, port))
@@ -530,7 +530,7 @@ class DataSetTrainingLinkerLora(TabBase):
             final_output_dir = os.path.join(output_dir_root, formatted_time)
             os.makedirs(final_output_dir, exist_ok=True)
             print("Output Model to: ", final_output_dir)
-            self.__SaveTrainTrainInfo(final_output_dir, formatted_time)
+            data_set_cmd_maker.save_train_info(self.cfg.cfg_obj, final_output_dir, formatted_time)
             self.cmd_executor.execute_command(data_set_cmd_maker.make_lora_cmd(self.cfg.cfg_obj))
 
         self.btn_run_standlone.click(fn=btn_run_standlone_click)

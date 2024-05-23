@@ -7,6 +7,7 @@ DESC:
 import json
 import os
 from PIL import Image
+import datetime
 
 
 def parse_param(s):
@@ -14,9 +15,6 @@ def parse_param(s):
     if len(p_list) == 2:
         return int(p_list[0]), int(p_list[1])
     return 768, 768
-
-
-
 
 
 def find_image(txt_path):
@@ -140,8 +138,6 @@ def make_db_cmd(cfg_obj):
     cmd += " --sample_at_first"
     cmd += " --loss_type \"l2\""
 
-
-
     if cfg_obj["xformers"]:
         cmd += " --{}".format(cfg_obj["xformers"])
 
@@ -159,6 +155,54 @@ def make_db_cmd(cfg_obj):
     return cmd
 
 
+def save_train_info(save_path, time_str, cfg_obj):
+    source_model = cfg_obj["base_model"]
+    info_obj = {}
+    if source_model and os.path.exists(source_model):
+        info_obj["base_model"] = os.path.basename(source_model)
+        base_mode_time = os.path.getmtime(source_model)
+        modified_time = datetime.datetime.fromtimestamp(base_mode_time)
+        formatted_time = modified_time.strftime('%Y-%m-%d %H:%M:%S')
+        info_obj["base_model_date"] = formatted_time
+    save_file = os.path.join(save_path, "TrainInfo_" + time_str + ".json")
+    save_prompt_info(cfg_obj["train_data_dir"], save_path)
+    with open(save_file, 'w') as f:
+        json.dump(info_obj, f, indent=2)
+
+def save_prompt_info(dataset_path, save_path):
+    import time
+    timestamp = time.time()
+    time_tuple = time.localtime(timestamp)
+    formatted_time = time.strftime("%m-%d-%H-%M-%S", time_tuple)
+    if dataset_path and os.path.exists(dataset_path):
+        info_obj = {}
+        prompt_stat = {}
+        img_count = 0
+        for r, d, fs in os.walk(dataset_path):
+            for f in fs:
+                if f.endswith(".txt"):
+                    with open(os.path.join(r, f), 'r') as file:
+                        str = file.read()
+                    p_list = str.split(',')
+                    for p in p_list:
+                        p = p.strip()
+                        if p in prompt_stat:
+                            prompt_stat[p] += 1
+                        else:
+                            prompt_stat[p] = 1
+                    pass
+                if f.endswith((".png", ".jpg", ".tga", ".webp")):
+                    img_count += 1
+        p_stat_list = list(prompt_stat.items())
+        p_stat_list.sort(key=lambda x: x[1], reverse=True)
+        info_obj["data_type"] = "PromptInfo"
+        info_obj["img_count"] = img_count
+        info_obj["p_stat"] = p_stat_list
+    save_file = os.path.join(save_path, "PromptInfo_" + formatted_time + ".json")
+    with open(save_file, 'w') as f:
+        json.dump(info_obj, f, indent=2)
+
+
 def make_lora_cmd(cfg_obj):
     cmd = "accelerate launch"
     cmd += f" --num_cpu_threads_per_process={2}"
@@ -166,8 +210,6 @@ def make_lora_cmd(cfg_obj):
         cmd += " \"" + os.path.join(os.getcwd(), "sd-script", "sdxl_train_network.py") + "\""
     else:
         cmd += " \"" + os.path.join(os.getcwd(), "sd-script", "train_network.py") + "\""
-
-    cmd += f" --network_module=\"networks.lora\""
 
     cmd += f" --bucket_no_upscale"
     cmd += f" --bucket_reso_steps={256}"
@@ -217,8 +259,6 @@ def make_lora_cmd(cfg_obj):
     cmd += " --vae=\"{}\"".format(cfg_obj["vae"])
     cmd += " --sample_at_first"
     cmd += " --loss_type \"l2\""
-
-
 
     if cfg_obj["xformers"]:
         cmd += " --{}".format(cfg_obj["xformers"])
