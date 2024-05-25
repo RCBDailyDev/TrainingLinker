@@ -155,7 +155,7 @@ def make_db_cmd(cfg_obj):
     return cmd
 
 
-def save_train_info(save_path, time_str, cfg_obj):
+def save_train_info(cfg_obj, save_path, time_str):
     source_model = cfg_obj["base_model"]
     info_obj = {}
     if source_model and os.path.exists(source_model):
@@ -212,6 +212,7 @@ def make_lora_cmd(cfg_obj):
         cmd += " \"" + os.path.join(os.getcwd(), "sd-script", "train_network.py") + "\""
 
     cmd += f" --bucket_no_upscale"
+    cmd += f" --network_module=\"networks.lora\""
     cmd += f" --bucket_reso_steps={256}"
     cmd += f" --cache_latents"
     cmd += f" --caption_extension=\".txt\""

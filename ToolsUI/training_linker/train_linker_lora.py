@@ -485,10 +485,11 @@ class DataSetTrainingLinkerLora(TabBase):
             if not output_dir_root:
                 print("Output Dir Not Available")
                 return
-            os.makedirs(output_dir_root, exist_ok=True)
-            if not os.path.exists(output_dir_root) or not os.path.isdir(output_dir_root):
+
+            if not os.path.isdir(output_dir_root):
                 print("Output Dir Not Available")
                 return
+            os.makedirs(output_dir_root, exist_ok=True)
             # get time string
             import time
             timestamp = time.time()
@@ -498,12 +499,14 @@ class DataSetTrainingLinkerLora(TabBase):
             final_output_dir = os.path.join(output_dir_root, formatted_time)
             os.makedirs(final_output_dir, exist_ok=True)
             print("Output Model to: ", final_output_dir)
-            data_set_cmd_maker.save_train_info(self.cfg.cfg_obj, final_output_dir, formatted_time)
+            use_cfg = self.cfg.cfg_obj.deepcopy()
+            use_cfg['output_dir'] = final_output_dir
+            data_set_cmd_maker.save_train_info(use_cfg, final_output_dir, formatted_time)
 
             ##self.cfg.cfg_obj["output_dir"] = final_output_dir
             client = Client("http://{}:{}/".format(ip, port))
             result = client.predict(
-                self.cfg.cfg_obj,
+                use_cfg,
                 api_name="/train_lora"
             )
             ##TODO:DELETE
