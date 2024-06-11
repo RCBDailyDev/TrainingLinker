@@ -477,9 +477,6 @@ class DataSetTrainingLinker(TabBase):
             if not output_dir_root:
                 print("Output Dir Not Available")
                 return
-            if not os.path.isdir(output_dir_root):
-                print("Output Dir Not Available")
-                return
             os.makedirs(output_dir_root, exist_ok=True)
             #get time string
             import time
@@ -490,7 +487,7 @@ class DataSetTrainingLinker(TabBase):
             final_output_dir = os.path.join(output_dir_root, formatted_time)
             os.makedirs(final_output_dir, exist_ok=True)
             print("Output Model to: ", final_output_dir)
-            use_cfg = self.cfg.cfg_obj.deepcopy()
+            use_cfg = self.cfg.cfg_obj.copy()
             use_cfg['output_dir'] = final_output_dir
             data_set_cmd_maker.save_train_info(use_cfg, final_output_dir, formatted_time)
 

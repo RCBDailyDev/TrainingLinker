@@ -215,6 +215,10 @@ class DataSetTrainingLinkerLora(TabBase):
                         self.btn_open_source_model_choose = gr.Button(value="\U0001f4c2", elem_classes="tl_set_small")
                         self.btn_choose_last = gr.Button(value="ChooseLastModel", elem_classes="tl_btn_small_green")
                     with gr.Row():
+                        self.network_weights = gr.Textbox(label="NetworkWeights", interactive=True)
+                        self.__RegisterUI("network_weights", self.network_weights)
+                        self.btn_open_network_weights_choose = gr.Button(value="\U0001f4c2", elem_classes="tl_set_small")
+                    with gr.Row():
                         self.vae = gr.Textbox(label="VaeModel", interactive=True)
                         self.__RegisterUI("vae", self.vae)
                         self.btn_open_vae_choose = gr.Button(value="\U0001f4c2", elem_classes='tl_set_small')
@@ -443,6 +447,17 @@ class DataSetTrainingLinkerLora(TabBase):
         self.btn_open_source_model_choose.click(fn=btn_open_source_model_choose_click,
                                                 outputs=[self.base_model], show_progress="hidden")
 
+        def btn_open_network_choose_click():
+            fpath = util.openfile_dialog(self.cfg.cfg_obj["output_dir"], default_extension=".safetensors",
+                                         extension_name="safetensors")
+            if fpath:
+                return fpath.replace("/", "\\")
+
+            return gr.skip()
+
+        self.btn_open_network_weights_choose.click(fn=btn_open_network_choose_click,
+                                                outputs=[self.network_weights], show_progress="hidden")
+
         def btn_open_vae_choose_click():
             fpath = util.openfile_dialog(self.cfg.cfg_obj['vae'], default_extension=".safetensors",
                                          extension_name="safetensors")
@@ -486,10 +501,8 @@ class DataSetTrainingLinkerLora(TabBase):
                 print("Output Dir Not Available")
                 return
 
-            if not os.path.isdir(output_dir_root):
-                print("Output Dir Not Available")
-                return
             os.makedirs(output_dir_root, exist_ok=True)
+
             # get time string
             import time
             timestamp = time.time()
@@ -499,7 +512,7 @@ class DataSetTrainingLinkerLora(TabBase):
             final_output_dir = os.path.join(output_dir_root, formatted_time)
             os.makedirs(final_output_dir, exist_ok=True)
             print("Output Model to: ", final_output_dir)
-            use_cfg = self.cfg.cfg_obj.deepcopy()
+            use_cfg = self.cfg.cfg_obj.copy()
             use_cfg['output_dir'] = final_output_dir
             data_set_cmd_maker.save_train_info(use_cfg, final_output_dir, formatted_time)
 

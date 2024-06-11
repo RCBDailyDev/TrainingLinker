@@ -251,6 +251,8 @@ def make_lora_cmd(cfg_obj):
     cmd += " --output_dir=\"{}\"".format(cfg_obj["output_dir"])
     cmd += " --output_name=\"{}\"".format(cfg_obj["output_name"])
     cmd += " --pretrained_model_name_or_path=\"{}\"".format(cfg_obj["base_model"])
+    if cfg_obj["network_weights"]:
+        cmd += " --network_weights=\"{}\"".format(cfg_obj["network_weights"])
     cmd += " --save_model_as=\"{}\"".format("safetensors")
     cmd += " --save_precision=\"{}\"".format(cfg_obj["save_precision"])
     if cfg_obj["shuffle_caption"]:
