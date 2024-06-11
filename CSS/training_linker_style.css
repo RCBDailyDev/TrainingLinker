@@ -8,6 +8,7 @@
 
 .tl_set_small:hover {
     background: var(--rc_btn_dark_hover) !important;
+    outline: solid 1px var(--rc_outline_color);
 }
 
 .tl_btn_small_green {
@@ -56,4 +57,12 @@
 
 .tl_lora_background{
     background: var(--rc_orange_norm);
+}
+
+.tl_red_text{
+    color:var(--rc_red_norm);
+}
+
+.tl_orange_text{
+    color:var(--rc_orange_norm)
 }

@@ -35,5 +35,6 @@ class TabBase(ABC):
         for ui in self.change_save_list:
             if type(ui[1]) == gr.components.Textbox:
                 ui[1].blur(fn=save_cfg_on_change, inputs=[x[1] for x in self.change_save_list], outputs=None)
+                ui[1].change(fn=save_cfg_on_change, inputs=[x[1] for x in self.change_save_list], outputs=None)
             else:
                 ui[1].change(fn=save_cfg_on_change, inputs=[x[1] for x in self.change_save_list], outputs=None)

@@ -169,6 +169,7 @@ def save_train_info(cfg_obj, save_path, time_str):
     with open(save_file, 'w') as f:
         json.dump(info_obj, f, indent=2)
 
+
 def save_prompt_info(dataset_path, save_path):
     import time
     timestamp = time.time()
@@ -276,5 +277,25 @@ def make_lora_cmd(cfg_obj):
 
     if cfg_obj["ch_debug_dataset"]:
         cmd += f" --debug_dataset"
+
+    return cmd
+
+
+def make_extract_lora_from_model_cmd(cfg_obj):
+    cmd = os.getcwd() + "/venv/Scripts/python.exe "
+    cmd += " \"" + os.path.join(os.getcwd(), "sd-script", "networks", "extract_lora_from_models.py") + "\""
+    cmd += f" --model_org=\"{cfg_obj['model_org']}\""
+    cmd += f" --model_tuned=\"{cfg_obj['model_tuned']}\""
+    cmd += f" --dim={cfg_obj['dim']}"
+    if cfg_obj["save_precision"] != "None":
+        cmd += f" --save_precision=\"{cfg_obj['save_precision']}\""
+    if cfg_obj["load_precision"] != "None":
+        cmd += f" --load_precision=\"{cfg_obj['load_precision']}\""
+    cmd += f" --device=\"{cfg_obj['device']}\""
+    cmd += f" --save_to=\"{cfg_obj['save_to']}\""
+    if cfg_obj["model_type"] == "SDXL":
+        cmd += " --sdxl"
+    elif cfg_obj["model_type"] == "V2":
+        cmd += " --v2"
 
     return cmd

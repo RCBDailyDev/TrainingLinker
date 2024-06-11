@@ -13,8 +13,8 @@ sys.path.append(os.path.dirname(__file__))
 import gradio as gr
 import util.common_util as util
 import ToolsUI.tab_mgr as tm
-import ToolsUI.training_linker.train_linker as data_set_training_linker
-import ToolsUI.training_linker.train_linker_lora as data_set_training_linker_lora
+import ToolsUI.training_linker.api_page as api_page
+import ToolsUI.training_linker.tools_page as tools_page
 
 GradioTemplateResponseOriginal = None
 
@@ -62,10 +62,10 @@ def UI(**kwargs):
     path_mgr.SetPromptLibPath(os.path.join(os.getcwd(), "prompt_lib"))
     with interface:
         with gr.Row(elem_classes='my_color_theme'):
-            with gr.Tab("Training Linker"):
-                data_set_training_linker.DataSetTrainingLinker(standalone=True)
-            with gr.Tab("Training Linker Lora"):
-                data_set_training_linker_lora.DataSetTrainingLinkerLora(standalone=True)
+            with gr.Tab("ToolsPage"):
+                tools_page.ToolsPage()
+            with gr.Tab("ApiPage"):
+                api_page.ApiPage()
 
 
         tm.get_tab_mgr().implUILogic()
