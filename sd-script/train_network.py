@@ -442,12 +442,15 @@ class NetworkTrainer:
         train_dataset_group.set_max_train_steps(args.max_train_steps)
 
         # lr schedulerを用意する
-        ##lr_scheduler = train_util.get_scheduler_fix(args, optimizer, accelerator.num_processes)
+
         # add by RCB
-        num_update_steps_per_epoch = math.ceil(
-            len(train_dataloader) / args.gradient_accumulation_steps)
-        num_train_epochs = math.ceil(args.max_train_steps / num_update_steps_per_epoch)
-        lr_scheduler = my_lr_sheduler(optimizer, num_train_epochs, cycle_steps, stage_list, -1, 2, 5)
+        if args.optimizer_type.lower() != "Prodigy".lower():
+            num_update_steps_per_epoch = math.ceil(
+                len(train_dataloader) / args.gradient_accumulation_steps)
+            num_train_epochs = math.ceil(args.max_train_steps / num_update_steps_per_epoch)
+            lr_scheduler = my_lr_sheduler(optimizer, num_train_epochs, cycle_steps, stage_list, -1, 2, 5)
+        else:
+            lr_scheduler = train_util.get_scheduler_fix(args, optimizer, accelerator.num_processes)
 
         # ^ add by RCB
 
@@ -983,7 +986,8 @@ class NetworkTrainer:
                             accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
 
                     optimizer.step()
-                    lr_scheduler.step()
+                    if args.optimizer_type.lower() == "Prodigy".lower():
+                        lr_scheduler.step()
                     optimizer.zero_grad(set_to_none=True)
 
                 if args.scale_weight_norms:
@@ -1019,7 +1023,8 @@ class NetworkTrainer:
                 current_loss = loss.detach().item()
                 loss_recorder.add(epoch=epoch, step=step, loss=current_loss)
                 avr_loss: float = loss_recorder.moving_average
-                logs = {"avr_loss": avr_loss}  # , "lr": lr_scheduler.get_last_lr()[0]}
+                process = int((step + 1) / (len(train_dataloader)) * 100)
+                logs = {"avr_loss": avr_loss, "p":process}  # , "lr": lr_scheduler.get_last_lr()[0]}
                 progress_bar.set_postfix(**logs)
 
                 if args.scale_weight_norms:
@@ -1031,7 +1036,8 @@ class NetworkTrainer:
 
                 if global_step >= args.max_train_steps:
                     break
-
+            if args.optimizer_type.lower() != "Prodigy".lower():
+                lr_scheduler.step()
             if args.logging_dir is not None:
                 logs = {"loss/epoch": loss_recorder.moving_average}
                 accelerator.log(logs, step=epoch + 1)

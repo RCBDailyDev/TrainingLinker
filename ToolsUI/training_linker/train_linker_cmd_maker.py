@@ -232,10 +232,15 @@ def make_lora_cmd(cfg_obj):
     cmd += " --network_dim={}".format(cfg_obj["network_dim"])
     cmd += " --network_alpha={}".format(cfg_obj["network_alpha"])
     cmd += " --gradient_checkpointing"
-    cmd += " --learning_rate=\"{}\"".format(cfg_obj["learning_rate"])
-    cmd += " --text_encoder_lr=\"{}\"".format(cfg_obj["text_encoder_lr"])
+    if cfg_obj["optimizer"] == "Prodigy":
+        cmd += " --learning_rate=\"{}\"".format(1)
+        cmd += " --text_encoder_lr=\"{}\"".format(1)
+        cmd += " --optimizer_args {}".format("weight_decay=0.01 betas=.9,.99 decouple=True use_bias_correction=True d_coef=0.5 d0=1e-5")
+    else:
+        cmd += " --learning_rate=\"{}\"".format(cfg_obj["learning_rate"])
+        cmd += " --text_encoder_lr=\"{}\"".format(cfg_obj["text_encoder_lr"])
     cmd += " --logging_dir=\"{}\"".format(cfg_obj["logging_dir"])
-    cmd += " --lr_scheduler=\"{}\"".format("cosine")
+    cmd += " --lr_scheduler=\"{}\"".format("constant")
     cmd += " --lr_scheduler_num_cycles=\"{}\"".format(1)
     cmd += " --max_data_loader_n_workers=\"{}\"".format(0)
     cmd += " --resolution=\"{}\"".format(cfg_obj["max_resolution"])
