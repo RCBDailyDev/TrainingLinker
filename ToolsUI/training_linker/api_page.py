@@ -28,6 +28,7 @@ class ApiPage(TabBase):
         self.btn_run_lora = gr.Button(visible=False)
         self.btn_stop_db = gr.Button(visible=False)
         self.btn_stop_lora = gr.Button(visible=False)
+        self.btn_print_lora_cmd = gr.Button(visible=False)
 
     def impl_ui_logic(self):
         def btn_run_api_click(cfg_obj):
@@ -43,3 +44,11 @@ class ApiPage(TabBase):
         self.btn_run_lora.click(fn=btn_run_api_click, inputs=[self.json_cmd_json], api_name="train_lora")
 
         self.btn_stop_lora.click(fn=lambda: self.cmd_executor.kill_command(), api_name="stop_lora")
+
+        def btn_print_lora_cmd_click(cfg_obj):
+            print("=====================CmdPreview=======================")
+            print(data_set_cmd_maker.make_lora_cmd(cfg_obj))
+            print("======================================================")
+
+        self.btn_print_lora_cmd.click(fn=btn_print_lora_cmd_click, inputs=[self.json_cmd_json],
+                                      api_name="print_lora_cmd")
