@@ -259,11 +259,10 @@ class ConfigSanitizer:
         "dataset_repeats": "num_repeats",
     }
 
-    def __init__(self, support_dreambooth: bool, support_finetuning: bool, support_controlnet: bool,
-                 support_dropout: bool) -> None:
+    def __init__(self, support_dreambooth: bool, support_finetuning: bool, support_controlnet: bool, support_dropout: bool) -> None:
         assert support_dreambooth or support_finetuning or support_controlnet, (
-                "Neither DreamBooth mode nor fine tuning mode nor controlnet mode specified. Please specify one mode or more."
-                + " / DreamBooth モードか fine tuning モードか controlnet モードのどれも指定されていません。1つ以上指定してください。"
+            "Neither DreamBooth mode nor fine tuning mode nor controlnet mode specified. Please specify one mode or more."
+            + " / DreamBooth モードか fine tuning モードか controlnet モードのどれも指定されていません。1つ以上指定してください。"
         )
 
         self.db_subset_schema = self.__merge_dict(
@@ -434,8 +433,7 @@ class BlueprintGenerator:
             subset_blueprints = []
             for subset_config in subsets:
                 params = self.generate_params_by_fallbacks(
-                    subset_params_klass,
-                    [subset_config, dataset_config, general_config, argparse_config, runtime_params]
+                    subset_params_klass, [subset_config, dataset_config, general_config, argparse_config, runtime_params]
                 )
                 subset_blueprints.append(SubsetBlueprint(params))
 
@@ -455,8 +453,7 @@ class BlueprintGenerator:
         default_params = asdict(param_klass())
         param_names = default_params.keys()
 
-        params = {name: search_value(name_map.get(name, name), fallbacks, default_params.get(name)) for name in
-                  param_names}
+        params = {name: search_value(name_map.get(name, name), fallbacks, default_params.get(name)) for name in param_names}
 
         return param_klass(**params)
 
@@ -574,7 +571,7 @@ def generate_dataset_group_by_blueprint(dataset_group_blueprint: DatasetGroupBlu
 
     # make buckets first because it determines the length of dataset
     # and set the same seed for all datasets
-    seed = random.randint(0, 2 ** 31)  # actual seed is seed + epoch_no
+    seed = random.randint(0, 2**31)  # actual seed is seed + epoch_no
     for i, dataset in enumerate(datasets):
         logger.info(f"[Dataset {i}]")
         dataset.make_buckets()
@@ -583,8 +580,7 @@ def generate_dataset_group_by_blueprint(dataset_group_blueprint: DatasetGroupBlu
     return DatasetGroup(datasets)
 
 
-def generate_dreambooth_subsets_config_by_subdirs(train_data_dir: Optional[str] = None,
-                                                  reg_data_dir: Optional[str] = None):
+def generate_dreambooth_subsets_config_by_subdirs(train_data_dir: Optional[str] = None, reg_data_dir: Optional[str] = None):
     def extract_dreambooth_params(name: str) -> Tuple[int, str]:
         tokens = name.split('_')
         try:
@@ -647,8 +643,7 @@ def generate_dreambooth_subsets_config_by_subdirs(train_data_dir: Optional[str] 
 
 
 def generate_controlnet_subsets_config_by_subdirs(
-        train_data_dir: Optional[str] = None, conditioning_data_dir: Optional[str] = None,
-        caption_extension: str = ".txt"
+    train_data_dir: Optional[str] = None, conditioning_data_dir: Optional[str] = None, caption_extension: str = ".txt"
 ):
     def generate(base_dir: Optional[str]):
         if base_dir is None:
@@ -731,8 +726,7 @@ if __name__ == "__main__":
     logger.info(f"{user_config}")
 
     sanitizer = ConfigSanitizer(
-        config_args.support_dreambooth, config_args.support_finetuning, config_args.support_controlnet,
-        config_args.support_dropout
+        config_args.support_dreambooth, config_args.support_finetuning, config_args.support_controlnet, config_args.support_dropout
     )
     sanitized_user_config = sanitizer.sanitize_user_config(user_config)
 
