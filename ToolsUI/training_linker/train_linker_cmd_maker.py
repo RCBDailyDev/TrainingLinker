@@ -30,6 +30,7 @@ def find_image(txt_path):
 def make_prompt_file(sample_path):
     info_list = []
     sample_prompts_path = sample_path + "\\sample\\prompt.json"
+    negative_prompt = ""
     if sample_path:
         path_list = []
         sub_dir = os.listdir(sample_path)

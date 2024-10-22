@@ -103,8 +103,6 @@ class ToolsPage(TabBase):
         def exl_btn_run_click(*args):
 
             ui_list = list(self.ui_kv.keys())
-            ##TODO:DELETE
-            print(ui_list)
 
             parm_kv = list(zip(ui_list, args))
             parm_dic = {}
@@ -151,11 +149,6 @@ class ToolsPage(TabBase):
 
             cmd = cmd_maker.make_extract_lora_from_model_cmd(cmd_obj)
             
-            ##TODO:DELETE
-            print(cmd)
-            
-
-
             self.cmd_executor.execute_command(cmd)
             return "<h3 class='tl_green_text'>运行中，请看控制台</h3>"
 
