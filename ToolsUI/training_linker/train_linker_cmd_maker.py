@@ -205,16 +205,15 @@ def save_prompt_info(dataset_path, save_path):
         json.dump(info_obj, f, indent=2)
 
 
-def make_lora_cmd(cfg_obj):
+def make_flux_lora_cmd(cfg_obj):
     cmd = "accelerate launch"
     cmd += f" --num_cpu_threads_per_process={2}"
-    if cfg_obj["sdxl"]:
-        cmd += " \"" + os.path.join(os.getcwd(), "sd-script", "sdxl_train_network.py") + "\""
-    else:
-        cmd += " \"" + os.path.join(os.getcwd(), "sd-script", "train_network.py") + "\""
+
+    cmd += " \"" + os.path.join(os.getcwd(), "sd-script", "flux_train_network.py") + "\""
+
 
     cmd += f" --bucket_no_upscale"
-    cmd += f" --network_module=\"networks.lora\""
+    cmd += f" --network_module=\"networks.lora_flux\""
     cmd += f" --bucket_reso_steps={256}"
     cmd += f" --cache_latents"
     cmd += f" --caption_extension=\".txt\""
@@ -237,6 +236,97 @@ def make_lora_cmd(cfg_obj):
         cmd += " --learning_rate=\"{}\"".format(1)
         cmd += " --text_encoder_lr=\"{}\"".format(1)
         cmd += " --optimizer_args {}".format("weight_decay=0.01 betas=.9,.99 decouple=True use_bias_correction=True d_coef=0.5 d0=1e-5")
+    else:
+        cmd += " --learning_rate=\"{}\"".format(cfg_obj["learning_rate"])
+        cmd += " --unet_lr=\"{}\"".format(cfg_obj["learning_rate"])
+        cmd += " --text_encoder_lr=\"{}\"".format(cfg_obj["text_encoder_lr"])
+    cmd += " --logging_dir=\"{}\"".format(cfg_obj["logging_dir"])
+    cmd += " --lr_scheduler=\"{}\"".format("constant")
+    cmd += " --lr_scheduler_num_cycles=\"{}\"".format(1)
+    cmd += " --max_data_loader_n_workers=\"{}\"".format(0)
+    cmd += " --resolution=\"{}\"".format(cfg_obj["max_resolution"])
+    cmd += " --max_train_epochs={}".format(cfg_obj["max_train_epochs"])
+    cmd += " --min_snr_gamma={}".format(cfg_obj["min_snr_gamma"])
+    if cfg_obj["noise_offset_type"] == "Multires":
+        cmd += " --multires_noise_iterations=\"{}\"".format(cfg_obj["multires_noise_iterations"])
+        cmd += " --multires_noise_discount=\"{}\"".format(cfg_obj["multires_noise_discount"])
+    else:
+        cmd += " --noise_offset=\"{}\"".format(cfg_obj["noise_offset"])
+        cmd += " --adaptive_noise_scale=\"{}\"".format(cfg_obj["adaptive_noise_scale"])
+
+    cmd += " --optimizer_type=\"{}\"".format(cfg_obj["optimizer"])
+    cmd += " --output_dir=\"{}\"".format(cfg_obj["output_dir"])
+    cmd += " --output_name=\"{}\"".format(cfg_obj["output_name"])
+    cmd += " --pretrained_model_name_or_path=\"{}\"".format(cfg_obj["base_model"])
+    if cfg_obj["network_weights"]:
+        cmd += " --network_weights=\"{}\"".format(cfg_obj["network_weights"])
+    cmd += " --save_model_as=\"{}\"".format("safetensors")
+    cmd += " --save_precision=\"{}\"".format(cfg_obj["save_precision"])
+    if cfg_obj["shuffle_caption"]:
+        cmd += " --shuffle_caption"
+    cmd += " --train_batch_size=\"{}\"".format(cfg_obj["train_batch_size"])
+    cmd += " --train_data_dir=\"{}\"".format(cfg_obj["train_data_dir"])
+    cmd += " --ae=\"{}\"".format(cfg_obj["vae"])
+    cmd += " --sample_at_first"
+    cmd += " --loss_type \"l2\""
+
+    if cfg_obj["xformers"]:
+        cmd += " --{}".format(cfg_obj["xformers"])
+
+    cmd += " --cus_lr_schedule=\"{}\"".format(cfg_obj["cus_lr_schedule"])
+
+    make_prompt_file(cfg_obj["sample_tx_train_dir"])
+    cmd += " --sample_prompts=\"{}\"".format(cfg_obj["sample_tx_train_dir"] + "\\sample\\prompt.json")
+    cmd += " --sample_every_n_epochs=\"{}\"".format(cfg_obj["sample_every_n_epochs"])
+    cmd += " --save_every_n_epochs=\"{}\"".format(cfg_obj["save_every_n_epochs"])
+    cmd += " --sample_sampler=euler_a"
+
+    if cfg_obj["ch_debug_dataset"]:
+        cmd += f" --debug_dataset"
+
+    cmd += " --clip_l=./clip/clip_l.safetensors"
+    cmd += " --t5xxl=./clip/t5xxl_fp16.safetensors"
+    cmd += " --apply_t5_attn_mask"
+    cmd += " --model_prediction_type=raw --guidance_scale=1 --guidance_rescale"
+    cmd += " --network_train_unet_only"
+    cmd += " --fp8_base"
+
+
+    return cmd
+
+
+def make_lora_cmd(cfg_obj):
+    cmd = "accelerate launch"
+    cmd += f" --num_cpu_threads_per_process={2}"
+    if cfg_obj["sdxl"]:
+        cmd += " \"" + os.path.join(os.getcwd(), "sd-script", "sdxl_train_network.py") + "\""
+    else:
+        cmd += " \"" + os.path.join(os.getcwd(), "sd-script", "train_network.py") + "\""
+
+    cmd += f" --bucket_no_upscale"
+    cmd += f" --network_module=\"networks.lora\""
+    cmd += f" --bucket_reso_steps={64}"
+    cmd += f" --cache_latents"
+    cmd += f" --caption_extension=\".txt\""
+    cmd += f" --enable_bucket"
+    cmd += f" --min_bucket_reso={640}"
+    cmd += f" --max_bucket_reso={1536}"
+
+    if cfg_obj["mixed_precision"] == "fp16":
+        cmd += f" --mixed_precision=\"fp16\""
+        if cfg_obj["full_16"]:
+            cmd += f" --full_fp16"
+    elif cfg_obj["mixed_precision"] == "bf16":
+        cmd += f" --mixed_precision=\"bf16\""
+        if cfg_obj["full_16"]:
+            cmd += f" --full_bf16"
+    cmd += " --network_dim={}".format(cfg_obj["network_dim"])
+    cmd += " --network_alpha={}".format(cfg_obj["network_alpha"])
+    cmd += " --gradient_checkpointing"
+    if cfg_obj["optimizer"] == "Prodigy":
+        cmd += " --learning_rate=\"{}\"".format(1)
+        cmd += " --text_encoder_lr=\"{}\"".format(1)
+        cmd += f" --optimizer_args weight_decay=0.01 betas=.9,.99 decouple=True use_bias_correction=True d_coef=0.5 d0={cfg_obj["d0"]}"
     else:
         cmd += " --learning_rate=\"{}\"".format(cfg_obj["learning_rate"])
         cmd += " --text_encoder_lr=\"{}\"".format(cfg_obj["text_encoder_lr"])
@@ -266,7 +356,8 @@ def make_lora_cmd(cfg_obj):
         cmd += " --shuffle_caption"
     cmd += " --train_batch_size=\"{}\"".format(cfg_obj["train_batch_size"])
     cmd += " --train_data_dir=\"{}\"".format(cfg_obj["train_data_dir"])
-    cmd += " --vae=\"{}\"".format(cfg_obj["vae"])
+    if cfg_obj["vae"]:
+        cmd += " --vae=\"{}\"".format(cfg_obj["vae"])
     cmd += " --sample_at_first"
     cmd += " --loss_type \"l2\""
 
@@ -285,6 +376,7 @@ def make_lora_cmd(cfg_obj):
         cmd += f" --debug_dataset"
 
     return cmd
+
 
 
 def make_extract_lora_from_model_cmd(cfg_obj):
