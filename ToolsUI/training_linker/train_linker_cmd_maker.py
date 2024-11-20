@@ -375,6 +375,7 @@ def make_lora_cmd(cfg_obj):
     if cfg_obj["ch_debug_dataset"]:
         cmd += f" --debug_dataset"
 
+    cmd += f" --caption_tag_dropout_rate={0.5}"
     return cmd
 
 
