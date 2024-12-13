@@ -15,7 +15,6 @@ from PIL import Image
 from safetensors.torch import save_file
 
 from library import flux_models, flux_utils, strategy_base, train_util
-from library.sd3_train_utils import load_prompts
 from library.device_utils import init_ipex, clean_memory_on_device
 
 init_ipex()
@@ -41,6 +40,7 @@ def sample_images(
     text_encoders,
     sample_prompts_te_outputs,
     prompt_replacement=None,
+    controlnet=None
 ):
     if steps == 0:
         if not args.sample_at_first:
@@ -68,9 +68,11 @@ def sample_images(
     flux = accelerator.unwrap_model(flux)
     if text_encoders is not None:
         text_encoders = [accelerator.unwrap_model(te) for te in text_encoders]
+    if controlnet is not None:
+        controlnet = accelerator.unwrap_model(controlnet)
     # print([(te.parameters().__next__().device if te is not None else None) for te in text_encoders])
 
-    prompts = load_prompts(args.sample_prompts)
+    prompts = train_util.load_prompts(args.sample_prompts)
 
     save_dir = args.output_dir + "/sample"
     os.makedirs(save_dir, exist_ok=True)
@@ -99,6 +101,7 @@ def sample_images(
                     steps,
                     sample_prompts_te_outputs,
                     prompt_replacement,
+                    controlnet
                 )
     else:
         # Creating list with N elements, where each element is a list of prompt_dicts, and N is the number of processes available (number of devices available)
@@ -122,6 +125,7 @@ def sample_images(
                         steps,
                         sample_prompts_te_outputs,
                         prompt_replacement,
+                        controlnet
                     )
 
     torch.set_rng_state(rng_state)
@@ -143,6 +147,7 @@ def sample_image_inference(
     steps,
     sample_prompts_te_outputs,
     prompt_replacement,
+    controlnet
 ):
     assert isinstance(prompt_dict, dict)
     # negative_prompt = prompt_dict.get("negative_prompt")
@@ -151,7 +156,7 @@ def sample_image_inference(
     height = prompt_dict.get("height", 512)
     scale = prompt_dict.get("scale", 3.5)
     seed = prompt_dict.get("seed")
-    # controlnet_image = prompt_dict.get("controlnet_image")
+    controlnet_image = prompt_dict.get("controlnet_image")
     prompt: str = prompt_dict.get("prompt", "")
     # sampler_name: str = prompt_dict.get("sample_sampler", args.sample_sampler)
 
@@ -170,7 +175,6 @@ def sample_image_inference(
 
     # if negative_prompt is None:
     #     negative_prompt = ""
-
     height = max(64, height - height % 16)  # round to divisible by 16
     width = max(64, width - width % 16)  # round to divisible by 16
     logger.info(f"prompt: {prompt}")
@@ -196,7 +200,6 @@ def sample_image_inference(
         tokens_and_masks = tokenize_strategy.tokenize(prompt)
         # strategy has apply_t5_attn_mask option
         encoded_text_encoder_conds = encoding_strategy.encode_tokens(tokenize_strategy, text_encoders, tokens_and_masks)
-        print([x.shape if x is not None else None for x in encoded_text_encoder_conds])
 
         # if text_encoder_conds is not cached, use encoded_text_encoder_conds
         if len(text_encoder_conds) == 0:
@@ -225,10 +228,15 @@ def sample_image_inference(
     img_ids = flux_utils.prepare_img_ids(1, packed_latent_height, packed_latent_width).to(accelerator.device, weight_dtype)
     t5_attn_mask = t5_attn_mask.to(accelerator.device) if args.apply_t5_attn_mask else None
 
-    with accelerator.autocast(), torch.no_grad():
-        x = denoise(flux, noise, img_ids, t5_out, txt_ids, l_pooled, timesteps=timesteps, guidance=scale, t5_attn_mask=t5_attn_mask)
+    if controlnet_image is not None:
+        controlnet_image = Image.open(controlnet_image).convert("RGB")
+        controlnet_image = controlnet_image.resize((width, height), Image.LANCZOS)
+        controlnet_image = torch.from_numpy((np.array(controlnet_image) / 127.5) - 1)
+        controlnet_image = controlnet_image.permute(2, 0, 1).unsqueeze(0).to(weight_dtype).to(accelerator.device)
 
-    x = x.float()
+    with accelerator.autocast(), torch.no_grad():
+        x = denoise(flux, noise, img_ids, t5_out, txt_ids, l_pooled, timesteps=timesteps, guidance=scale, t5_attn_mask=t5_attn_mask, controlnet=controlnet, controlnet_img=controlnet_image)
+
     x = flux_utils.unpack_latents(x, packed_latent_height, packed_latent_width)
 
     # latent to image
@@ -259,14 +267,9 @@ def sample_image_inference(
         wandb_tracker = accelerator.get_tracker("wandb")
 
         import wandb
+
         # not to commit images to avoid inconsistency between training and logging steps
-        wandb_tracker.log(
-            {f"sample_{i}": wandb.Image(
-                image,
-                caption=prompt # positive prompt as a caption
-            )}, 
-            commit=False
-        )
+        wandb_tracker.log({f"sample_{i}": wandb.Image(image, caption=prompt)}, commit=False)  # positive prompt as a caption
 
 
 def time_shift(mu: float, sigma: float, t: torch.Tensor):
@@ -308,17 +311,39 @@ def denoise(
     timesteps: list[float],
     guidance: float = 4.0,
     t5_attn_mask: Optional[torch.Tensor] = None,
+    controlnet: Optional[flux_models.ControlNetFlux] = None,
+    controlnet_img: Optional[torch.Tensor] = None,
 ):
     # this is ignored for schnell
     guidance_vec = torch.full((img.shape[0],), guidance, device=img.device, dtype=img.dtype)
+
+
     for t_curr, t_prev in zip(tqdm(timesteps[:-1]), timesteps[1:]):
         t_vec = torch.full((img.shape[0],), t_curr, dtype=img.dtype, device=img.device)
+        model.prepare_block_swap_before_forward()
+        if controlnet is not None:
+            block_samples, block_single_samples = controlnet(
+                img=img,
+                img_ids=img_ids,
+                controlnet_cond=controlnet_img,
+                txt=txt,
+                txt_ids=txt_ids,
+                y=vec,
+                timesteps=t_vec,
+                guidance=guidance_vec,
+                txt_attention_mask=t5_attn_mask,
+            )
+        else:
+            block_samples = None
+            block_single_samples = None
         pred = model(
             img=img,
             img_ids=img_ids,
             txt=txt,
             txt_ids=txt_ids,
             y=vec,
+            block_controlnet_hidden_states=block_samples,
+            block_controlnet_single_hidden_states=block_single_samples,
             timesteps=t_vec,
             guidance=guidance_vec,
             txt_attention_mask=t5_attn_mask,
@@ -326,6 +351,7 @@ def denoise(
 
         img = img + (t_prev - t_curr) * pred
 
+    model.prepare_block_swap_before_forward()
     return img
 
 
@@ -437,7 +463,7 @@ def get_noisy_model_input_and_timesteps(
         sigmas = get_sigmas(noise_scheduler, timesteps, device, n_dim=latents.ndim, dtype=dtype)
         noisy_model_input = sigmas * noise + (1.0 - sigmas) * latents
 
-    return noisy_model_input, timesteps, sigmas
+    return noisy_model_input.to(dtype), timesteps.to(dtype), sigmas
 
 
 def apply_model_prediction_type(args, model_pred, noisy_model_input, sigmas):
@@ -538,6 +564,12 @@ def add_flux_train_arguments(parser: argparse.ArgumentParser):
     )
     parser.add_argument("--ae", type=str, help="path to ae (*.sft or *.safetensors) / aeのパス（*.sftまたは*.safetensors）")
     parser.add_argument(
+        "--controlnet_model_name_or_path",
+        type=str,
+        default=None,
+        help="path to controlnet (*.sft or *.safetensors) / controlnetのパス（*.sftまたは*.safetensors）"
+    )
+    parser.add_argument(
         "--t5xxl_max_token_length",
         type=int,
         default=None,
@@ -549,44 +581,7 @@ def add_flux_train_arguments(parser: argparse.ArgumentParser):
         action="store_true",
         help="apply attention mask to T5-XXL encode and FLUX double blocks / T5-XXLエンコードとFLUXダブルブロックにアテンションマスクを適用する",
     )
-    parser.add_argument(
-        "--cache_text_encoder_outputs", action="store_true", help="cache text encoder outputs / text encoderの出力をキャッシュする"
-    )
-    parser.add_argument(
-        "--cache_text_encoder_outputs_to_disk",
-        action="store_true",
-        help="cache text encoder outputs to disk / text encoderの出力をディスクにキャッシュする",
-    )
-    parser.add_argument(
-        "--text_encoder_batch_size",
-        type=int,
-        default=None,
-        help="text encoder batch size (default: None, use dataset's batch size)"
-        + " / text encoderのバッチサイズ（デフォルト: None, データセットのバッチサイズを使用）",
-    )
-    parser.add_argument(
-        "--disable_mmap_load_safetensors",
-        action="store_true",
-        help="disable mmap load for safetensors. Speed up model loading in WSL environment / safetensorsのmmapロードを無効にする。WSL環境等でモデル読み込みを高速化できる",
-    )
 
-    # copy from Diffusers
-    parser.add_argument(
-        "--weighting_scheme",
-        type=str,
-        default="none",
-        choices=["sigma_sqrt", "logit_normal", "mode", "cosmap", "none"],
-    )
-    parser.add_argument(
-        "--logit_mean", type=float, default=0.0, help="mean to use when using the `'logit_normal'` weighting scheme."
-    )
-    parser.add_argument("--logit_std", type=float, default=1.0, help="std to use when using the `'logit_normal'` weighting scheme.")
-    parser.add_argument(
-        "--mode_scale",
-        type=float,
-        default=1.29,
-        help="Scale of mode weighting scheme. Only effective when using the `'mode'` as the `weighting_scheme`.",
-    )
     parser.add_argument(
         "--guidance_scale",
         type=float,

@@ -326,7 +326,8 @@ def make_lora_cmd(cfg_obj):
     if cfg_obj["optimizer"] == "Prodigy":
         cmd += " --learning_rate=\"{}\"".format(1)
         cmd += " --text_encoder_lr=\"{}\"".format(1)
-        cmd += f" --optimizer_args weight_decay=0.01 betas=.9,.99 decouple=True use_bias_correction=True d_coef=0.5 d0={cfg_obj["d0"]}"
+        d0 = cfg_obj["d0"]
+        cmd += f" --optimizer_args weight_decay=0.01 betas=.9,.99 decouple=True use_bias_correction=True d_coef=0.5 d0={d0}"
     else:
         cmd += " --learning_rate=\"{}\"".format(cfg_obj["learning_rate"])
         cmd += " --text_encoder_lr=\"{}\"".format(cfg_obj["text_encoder_lr"])

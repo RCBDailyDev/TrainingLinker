@@ -100,7 +100,7 @@ class TextualInversionTrainer:
         self.is_sdxl = False
 
     def assert_extra_args(self, args, train_dataset_group):
-        pass
+        train_dataset_group.verify_bucket_reso_steps(64)
 
     def load_target_model(self, args, weight_dtype, accelerator):
         text_encoder, vae, unet, _ = train_util.load_target_model(args, weight_dtype, accelerator)
@@ -114,7 +114,7 @@ class TextualInversionTrainer:
 
     def get_latents_caching_strategy(self, args):
         latents_caching_strategy = strategy_sd.SdSdxlLatentsCachingStrategy(
-            True, args.cache_latents_to_disk, args.vae_batch_size, False
+            True, args.cache_latents_to_disk, args.vae_batch_size, args.skip_cache_check
         )
         return latents_caching_strategy
 
@@ -378,7 +378,7 @@ class TextualInversionTrainer:
             vae.requires_grad_(False)
             vae.eval()
 
-            train_dataset_group.new_cache_latents(vae, accelerator.is_main_process)
+            train_dataset_group.new_cache_latents(vae, accelerator)
 
             clean_memory_on_device(accelerator.device)
             accelerator.wait_for_everyone()
@@ -585,7 +585,7 @@ class TextualInversionTrainer:
 
                     # Sample noise, sample a random timestep for each image, and add noise to the latents,
                     # with noise offset and/or multires noise if specified
-                    noise, noisy_latents, timesteps, huber_c = train_util.get_noise_noisy_latents_and_timesteps(
+                    noise, noisy_latents, timesteps = train_util.get_noise_noisy_latents_and_timesteps(
                         args, noise_scheduler, latents
                     )
 
@@ -601,9 +601,8 @@ class TextualInversionTrainer:
                     else:
                         target = noise
 
-                    loss = train_util.conditional_loss(
-                        noise_pred.float(), target.float(), reduction="none", loss_type=args.loss_type, huber_c=huber_c
-                    )
+                    huber_c = train_util.get_huber_threshold_if_needed(args, timesteps, noise_scheduler)
+                    loss = train_util.conditional_loss(noise_pred.float(), target.float(), args.loss_type, "none", huber_c)
                     if args.masked_loss or ("alpha_masks" in batch and batch["alpha_masks"] is not None):
                         loss = apply_masked_loss(loss, batch)
                     loss = loss.mean([1, 2, 3])
@@ -618,7 +617,7 @@ class TextualInversionTrainer:
                     if args.v_pred_like_loss:
                         loss = add_v_prediction_like_loss(loss, timesteps, noise_scheduler, args.v_pred_like_loss)
                     if args.debiased_estimation_loss:
-                        loss = apply_debiased_estimation(loss, timesteps, noise_scheduler)
+                        loss = apply_debiased_estimation(loss, timesteps, noise_scheduler, args.v_parameterization)
 
                     loss = loss.mean()  # 平均なのでbatch_sizeで割る必要なし
 

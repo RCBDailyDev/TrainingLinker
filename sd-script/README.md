@@ -1,6 +1,6 @@
 This repository contains training, generation and utility scripts for Stable Diffusion.
 
-## FLUX.1 training (WIP)
+## FLUX.1 and SD3 training (WIP)
 
 This feature is experimental. The options and the training script may change in the future. Please let us know if you have any idea to improve the training.
 
@@ -9,64 +9,47 @@ __Please update PyTorch to 2.4.0. We have tested with `torch==2.4.0` and `torchv
 The command to install PyTorch is as follows:
 `pip3 install torch==2.4.0 torchvision==0.19.0 --index-url https://download.pytorch.org/whl/cu124`
 
+- [FLUX.1 training](#flux1-training)
+- [SD3 training](#sd3-training)
+
 ### Recent Updates
 
-Sep 18, 2024 (update 1):
-Fixed an issue where train()/eval() was not called properly with the schedule-free optimizer. The schedule-free optimizer can be used in FLUX.1 LoRA training and fine-tuning for now.
+Dec 7, 2024:
 
-Sep 18, 2024:
+- The option to specify the model name during ControlNet training was different in each script. It has been unified. Please specify `--controlnet_model_name_or_path`. PR [#1821](https://github.com/kohya-ss/sd-scripts/pull/1821) Thanks to sdbds!
+<!-- 
+Also, the ControlNet training script for SD has been changed from `train_controlnet.py` to `train_control_net.py`.
+  - `train_controlnet.py` is still available, but it will be removed in the future.
+-->
 
-- Schedule-free optimizer is added. Thanks to sdbds! See PR [#1600](https://github.com/kohya-ss/sd-scripts/pull/1600) for details.
-  - Details of the schedule-free optimizer can be found in [facebookresearch/schedule_free](https://github.com/facebookresearch/schedule_free).
-  - `schedulefree` is added to the dependencies. Please update the library if necessary.
-  - AdamWScheduleFree or SGDScheduleFree can be used. Specify `adamwschedulefree` or `sgdschedulefree` in `--optimizer_type`.
-  - Wrapper classes are not available for now.
-  - These can be used not only for FLUX.1 training but also for other training scripts after merging to the dev/main branch.
+- Fixed an issue where the saved model would be corrupted (pos_embed would not be saved) when `--enable_scaled_pos_embed` was specified in `sd3_train.py`.
 
-Sep 16, 2024:
+Dec 3, 2024:
 
- Added `train_double_block_indices` and `train_double_block_indices` to the LoRA training script to specify the indices of the blocks to train. See [Specify blocks to train in FLUX.1 LoRA training](#specify-blocks-to-train-in-flux1-lora-training) for details.
+-`--blocks_to_swap` now works in FLUX.1 ControlNet training. Sample commands for 24GB VRAM and 16GB VRAM are added [here](#flux1-controlnet-training).
 
-Sep 15, 2024:
+Dec 2, 2024:
 
-Added a script `convert_diffusers_to_flux.py` to convert Diffusers format FLUX.1 models (checkpoints) to BFL format. See `--help` for usage. Only Flux models are supported. AE/CLIP/T5XXL are not supported. 
+- FLUX.1 ControlNet training is supported. PR [#1813](https://github.com/kohya-ss/sd-scripts/pull/1813). Thanks to minux302!  See PR and [here](#flux1-controlnet-training) for details.
+  - Not fully tested. Feedback is welcome.
+  - 80GB VRAM is required for 1024x1024 resolution, and 48GB VRAM is required for 512x512 resolution.
+  - Currently, it only works in Linux environment (or Windows WSL2) because DeepSpeed is required.
+  - Multi-GPU training is not tested.
 
-The implementation is based on 2kpr's code. Thanks to 2kpr!
+Dec 1, 2024:
 
-Sep 14, 2024:
-- You can now specify the rank for each layer in FLUX.1. See [Specify rank for each layer in FLUX.1](#specify-rank-for-each-layer-in-flux1) for details.
-- OFT is now supported with FLUX.1. See [FLUX.1 OFT training](#flux1-oft-training) for details.
+- Pseudo Huber loss is now available for FLUX.1 and SD3.5 training. See PR [#1808](https://github.com/kohya-ss/sd-scripts/pull/1808)  for details. Thanks to recris!
+  - Specify `--loss_type huber` or `--loss_type smooth_l1` to use it. `--huber_c` and `--huber_scale` are also available.
 
-Sep 11, 2024: 
-Logging to wandb is improved. See PR [#1576](https://github.com/kohya-ss/sd-scripts/pull/1576) for details. Thanks to p1atdev!
+- [Prodigy + ScheduleFree](https://github.com/LoganBooker/prodigy-plus-schedule-free) is supported. See PR [#1811](https://github.com/kohya-ss/sd-scripts/pull/1811) for details. Thanks to rockerBOO!
 
-Sep 10, 2024:
-In FLUX.1 LoRA training, individual learning rates can be specified for CLIP-L and T5XXL. By specifying multiple numbers in `--text_encoder_lr`, you can set the learning rates for CLIP-L and T5XXL separately. Specify like `--text_encoder_lr 1e-4 1e-5`. The first value is the learning rate for CLIP-L, and the second value is for T5XXL. If you specify only one, the learning rates for CLIP-L and T5XXL will be the same.
+Nov 14, 2024:
 
-Sep 9, 2024:
-Added `--negative_prompt` and `--cfg_scale` to `flux_minimal_inference.py`. Negative prompts can be used. 
+- Improved the implementation of block swap and made it available for both FLUX.1 and SD3 LoRA training. See [FLUX.1 LoRA training](#flux1-lora-training) etc. for how to use the new options. Training is possible with about 8-10GB of VRAM.
+- During fine-tuning, the memory usage when specifying the same number of blocks has increased slightly, but the training speed when specifying block swap has been significantly improved.
+- There may be bugs due to the significant changes. Feedback is welcome.
 
-Sep 5, 2024 (update 1):
-
-Added `--cpu_offload_checkpointing` option to LoRA training script. Offloads gradient checkpointing to CPU. This reduces up to 1GB of VRAM usage but slows down the training by about 15%. Cannot be used with `--split_mode`.
-
-Sep 5, 2024:
-
-The LoRA merge script now supports CLIP-L and T5XXL LoRA. Please specify `--clip_l` and `--t5xxl`. `--clip_l_save_to` and `--t5xxl_save_to` specify the save destination for CLIP-L and T5XXL. See [Merge LoRA to FLUX.1 checkpoint](#merge-lora-to-flux1-checkpoint) for details.
-
-Sep 4, 2024:
-- T5XXL LoRA is supported in LoRA training. Remove `--network_train_unet_only` and add `train_t5xxl=True` to `--network_args`. CLIP-L is also trained at the same time (T5XXL only cannot be trained). The trained model can be used with ComfyUI. See [Key Features for FLUX.1 LoRA training](#key-features-for-flux1-lora-training) for details.
-- In LoRA training, when `--fp8_base` is specified, you can specify `t5xxl_fp8_e4m3fn.safetensors` as the T5XXL weights. However, it is recommended to use fp16 weights for caching.
-- Fixed an issue where the training CLIP-L LoRA was not used in sample image generation during LoRA training.
-
-Sep 1, 2024:
-- `--timestamp_sampling` has `flux_shift` option. Thanks to sdbds!
-  - This is the same shift as FLUX.1 dev inference, adjusting the timestep sampling depending on the resolution. `--discrete_flow_shift` is ignored when `flux_shift` is specified. It is not verified which is better, `shift` or `flux_shift`.
-
-Aug 29, 2024: 
-Please update `safetensors` to `0.4.4` to fix the error when using `--resume`. `requirements.txt` is updated.
-
-### Contents
+## FLUX.1 training
 
 - [FLUX.1 LoRA training](#flux1-lora-training)
   - [Key Options for FLUX.1 LoRA training](#key-options-for-flux1-lora-training)
@@ -74,6 +57,7 @@ Please update `safetensors` to `0.4.4` to fix the error when using `--resume`. `
   - [Key Features for FLUX.1 LoRA training](#key-features-for-flux1-lora-training)
   - [Specify rank for each layer in FLUX.1](#specify-rank-for-each-layer-in-flux1)
   - [Specify blocks to train in FLUX.1 LoRA training](#specify-blocks-to-train-in-flux1-lora-training)
+- [FLUX.1 ControlNet training](#flux1-controlnet-training)
 - [FLUX.1 OFT training](#flux1-oft-training)
 - [Inference for FLUX.1 with LoRA model](#inference-for-flux1-with-lora-model)
 - [FLUX.1 fine-tuning](#flux1-fine-tuning)
@@ -97,7 +81,8 @@ accelerate launch  --mixed_precision bf16 --num_cpu_threads_per_process 1 flux_t
 --pretrained_model_name_or_path flux1-dev.safetensors --clip_l sd3/clip_l.safetensors --t5xxl sd3/t5xxl_fp16.safetensors 
 --ae ae.safetensors --cache_latents_to_disk --save_model_as safetensors --sdpa --persistent_data_loader_workers 
 --max_data_loader_n_workers 2 --seed 42 --gradient_checkpointing --mixed_precision bf16 --save_precision bf16 
---network_module networks.lora_flux --network_dim 4 --optimizer_type adamw8bit --learning_rate 1e-4 
+--network_module networks.lora_flux --network_dim 4 --network_train_unet_only 
+--optimizer_type adamw8bit --learning_rate 1e-4 
 --cache_text_encoder_outputs --cache_text_encoder_outputs_to_disk --fp8_base 
 --highvram --max_train_epochs 4 --save_every_n_epochs 1 --dataset_config dataset_1024_bs2.toml 
 --output_dir path/to/output/dir --output_name flux-lora-name 
@@ -105,23 +90,39 @@ accelerate launch  --mixed_precision bf16 --num_cpu_threads_per_process 1 flux_t
 ```
 (The command is multi-line for readability. Please combine it into one line.)
 
-The training can be done with 16GB VRAM GPUs with Adafactor optimizer. Please use settings like below:
+We also not sure how many epochs are needed for convergence, and how the learning rate should be adjusted.
+
+The trained LoRA model can be used with ComfyUI. 
+
+When training LoRA for Text Encoder (without `--network_train_unet_only`), more VRAM is required. Please refer to the settings below to reduce VRAM usage.
+
+__Options for GPUs with less VRAM:__
+
+By specifying `--blocks_to_swap`, you can save VRAM by swapping some blocks between CPU and GPU. See [FLUX.1 fine-tuning](#flux1-fine-tuning) for details.
+
+Specify a number like `--blocks_to_swap 10`. A larger number will swap more blocks, saving more VRAM, but training will be slower. In FLUX.1, you can swap up to 35 blocks.
+
+`--cpu_offload_checkpointing` offloads gradient checkpointing to CPU. This reduces up to 1GB of VRAM usage but slows down the training by about 15%. Cannot be used with `--blocks_to_swap`.
+
+Adafactor optimizer may reduce the VRAM usage than 8bit AdamW. Please use settings like below:
 
 ```
 --optimizer_type adafactor --optimizer_args "relative_step=False" "scale_parameter=False" "warmup_init=False" --lr_scheduler constant_with_warmup --max_grad_norm 0.0
 ```
 
-The training can be done with 12GB VRAM GPUs with Adafactor optimizer, `--split_mode` and `train_blocks=single` options. Please use settings like below:
+The training can be done with 16GB VRAM GPUs with the batch size of 1. Please change your dataset configuration.
+
+The training can be done with 12GB VRAM GPUs with `--blocks_to_swap 16` with 8bit AdamW. Please use settings like below:
 
 ```
---optimizer_type adafactor --optimizer_args "relative_step=False" "scale_parameter=False" "warmup_init=False" --split_mode --network_args "train_blocks=single" --lr_scheduler constant_with_warmup --max_grad_norm 0.0
+--blocks_to_swap 16 
 ```
 
-`--cpu_offload_checkpointing` offloads gradient checkpointing to CPU. This reduces up to 1GB of VRAM usage but slows down the training by about 15%. Cannot be used with `--split_mode`.
+For GPUs with less than 10GB of VRAM, it is recommended to use an fp8 checkpoint for T5XXL. You can download `t5xxl_fp8_e4m3fn.safetensors` from [comfyanonymous/flux_text_encoders](https://huggingface.co/comfyanonymous/flux_text_encoders) (please use without `scaled`).
 
-We also not sure how many epochs are needed for convergence, and how the learning rate should be adjusted.
+10GB VRAM GPUs will work with 22 blocks swapped, and 8GB VRAM GPUs will work with 28 blocks swapped.
 
-The trained LoRA model can be used with ComfyUI. 
+__`--split_mode` is deprecated. This option is still available, but they will be removed in the future. Please use `--blocks_to_swap` instead. If this option is specified and `--blocks_to_swap` is not specified, `--blocks_to_swap 18` is automatically enabled.__
 
 #### Key Options for FLUX.1 LoRA training
 
@@ -146,6 +147,7 @@ There are many unknown points in FLUX.1 training, so some settings can be specif
   - `additive`: add to noisy input
   - `sigma_scaled`: apply sigma scaling, same as SD3
 - `--discrete_flow_shift` is the discrete flow shift for the Euler Discrete Scheduler, default is 3.0 (same as SD3).
+- `--blocks_to_swap`. See [FLUX.1 fine-tuning](#flux1-fine-tuning) for details.
 
 The existing `--loss_type` option may be useful for FLUX.1 training. The default is `l2`.
 
@@ -273,6 +275,30 @@ example:
 
 If you specify one of `train_double_block_indices` or `train_single_block_indices`, the other will be trained as usual. 
 
+### FLUX.1 ControlNet training
+We have added a new training script for ControlNet training. The script is flux_train_control_net.py. See --help for options.
+
+Sample command is below. It will work with 80GB VRAM GPUs.
+```
+accelerate launch --mixed_precision bf16 --num_cpu_threads_per_process 1 flux_train_control_net.py
+--pretrained_model_name_or_path flux1-dev.safetensors --clip_l clip_l.safetensors --t5xxl t5xxl_fp16.safetensors
+--ae ae.safetensors --save_model_as safetensors --sdpa --persistent_data_loader_workers
+--max_data_loader_n_workers 1 --seed 42 --gradient_checkpointing --mixed_precision bf16
+--optimizer_type adamw8bit --learning_rate 2e-5 
+--highvram --max_train_epochs 1 --save_every_n_steps 1000 --dataset_config dataset.toml
+--output_dir /path/to/output/dir --output_name flux-cn
+--timestep_sampling shift --discrete_flow_shift 3.1582 --model_prediction_type raw --guidance_scale 1.0 --deepspeed
+```
+
+For 24GB VRAM GPUs, you can train with 16 blocks swapped and caching latents and text encoder outputs with the batch size of 1. Remove `--deepspeed` . Sample command is below. Not fully tested.
+```
+ --blocks_to_swap 16 --cache_latents_to_disk --cache_text_encoder_outputs_to_disk 
+```
+
+The training can be done with 16GB VRAM GPUs with around 30 blocks swapped. 
+
+`--gradient_accumulation_steps` is also available. The default value is 1 (no accumulation), but according to the original PR, 8 is used.
+
 ### FLUX.1 OFT training
 
 You can train OFT with almost the same options as LoRA, such as `--timestamp_sampling`. The following points are different.
@@ -307,6 +333,8 @@ python flux_minimal_inference.py --ckpt flux1-dev.safetensors --clip_l sd3/clip_
 
 The memory-efficient training with block swap is based on 2kpr's implementation. Thanks to 2kpr!
 
+__`--double_blocks_to_swap` and `--single_blocks_to_swap` are deprecated. These options is still available, but they will be removed in the future. Please use `--blocks_to_swap` instead. These options are equivalent to specifying `double_blocks_to_swap + single_blocks_to_swap // 2` in `--blocks_to_swap`.__
+
 Sample command for FLUX.1 fine-tuning is below. This will work with 24GB VRAM GPUs, and 64GB main memory is recommended. 
 
 ```
@@ -319,45 +347,70 @@ accelerate launch  --mixed_precision bf16 --num_cpu_threads_per_process 1 flux_t
 --optimizer_type adafactor --optimizer_args "relative_step=False" "scale_parameter=False" "warmup_init=False" 
 --lr_scheduler constant_with_warmup --max_grad_norm 0.0 
 --timestep_sampling shift --discrete_flow_shift 3.1582 --model_prediction_type raw --guidance_scale 1.0 
---fused_backward_pass  --double_blocks_to_swap 6 --cpu_offload_checkpointing --full_bf16 
+--fused_backward_pass  --blocks_to_swap 8 --full_bf16 
 ```
 (The command is multi-line for readability. Please combine it into one line.)
 
-Options are almost the same as LoRA training. The difference is `--full_bf16`, `--blockwise_fused_optimizers`, `--double_blocks_to_swap` and `--cpu_offload_checkpointing`.  `--single_blocks_to_swap` is also available.
+Options are almost the same as LoRA training. The difference is `--full_bf16`, `--fused_backward_pass` and  `--blocks_to_swap`. `--cpu_offload_checkpointing` is also available.
 
 `--full_bf16` enables the training with bf16 (weights and gradients). 
 
 `--fused_backward_pass` enables the fusing of the optimizer step into the backward pass for each parameter. This reduces the memory usage during training. Only Adafactor optimizer is supported for now. Stochastic rounding is also enabled when `--fused_backward_pass` and `--full_bf16` are specified.
 
-`--blockwise_fused_optimizers` enables the fusing of the optimizer step into the backward pass for each block. This is similar to `--fused_backward_pass`. Any optimizer can be used, but Adafactor is recommended for memory efficiency. `--blockwise_fused_optimizers` cannot be used with `--fused_backward_pass`. Stochastic rounding is not supported for now.
+`--blockwise_fused_optimizers` enables the fusing of the optimizer step into the backward pass for each block. This is similar to `--fused_backward_pass`. Any optimizer can be used, but Adafactor is recommended for memory efficiency and stochastic rounding. `--blockwise_fused_optimizers` cannot be used with `--fused_backward_pass`. Stochastic rounding is not supported for now.
 
-`--double_blocks_to_swap` and `--single_blocks_to_swap` are the number of double blocks and single blocks to swap. The default is None (no swap). These options must be combined with `--fused_backward_pass` or `--blockwise_fused_optimizers`. `--double_blocks_to_swap` can be specified with `--single_blocks_to_swap`. The recommended maximum number of blocks to swap is 9 for double blocks and 18 for single blocks. Please see the next chapter for details.
+`--blocks_to_swap` is the number of blocks to swap. The default is None (no swap). The maximum value is 35.
 
-`--cpu_offload_checkpointing` is to offload the gradient checkpointing to CPU. This reduces about 2GB of VRAM usage.
+`--cpu_offload_checkpointing` is to offload the gradient checkpointing to CPU. This reduces about 2GB of VRAM usage. This option cannot be used with `--blocks_to_swap`.
 
 All these options are experimental and may change in the future.
 
 The increasing the number of blocks to swap may reduce the memory usage, but the training speed will be slower. `--cpu_offload_checkpointing` also slows down the training.
 
-Swap 6 double blocks and use cpu offload checkpointing may be a good starting point. Please try different settings according to VRAM usage and training speed.
+Swap 8 blocks without cpu offload checkpointing may be a good starting point for 24GB VRAM GPUs. Please try different settings according to VRAM usage and training speed.
 
 The learning rate and the number of epochs are not optimized yet. Please adjust them according to the training results.
 
+#### How to use block swap
+
+There are two possible ways to use block swap. It is unknown which is better.
+
+1. Swap the minimum number of blocks that fit in VRAM with batch size 1 and shorten the training speed of one step.
+
+    The above command example is for this usage.
+
+2. Swap many blocks to increase the batch size and shorten the training speed per data.
+
+    For example, swapping 35 blocks seems to increase the batch size to about 5. In this case, the training speed per data will be relatively faster than 1.
+  
+#### Training with <24GB VRAM GPUs
+
+Swap 28 blocks without cpu offload checkpointing may be working with 12GB VRAM GPUs. Please try different settings according to VRAM size of your GPU.
+
+T5XXL requires about 10GB of VRAM, so 10GB of VRAM will be minimum requirement for FLUX.1 fine-tuning. 
+
 #### Key Features for FLUX.1 fine-tuning
 
-1.  Technical details of double/single block swap:
+1.  Technical details of block swap:
     - Reduce memory usage by transferring double and single blocks of FLUX.1 from GPU to CPU when they are not needed.
     - During forward pass, the weights of the blocks that have finished calculation are transferred to CPU, and the weights of the blocks to be calculated are transferred to GPU.
     - The same is true for the backward pass, but the order is reversed. The gradients remain on the GPU.
     - Since the transfer between CPU and GPU takes time, the training will be slower.
-    - `--double_blocks_to_swap` and `--single_blocks_to_swap` specify the number of blocks to swap. For example, `--double_blocks_to_swap 6` swaps 6 blocks at each step of training, but the remaining 13 blocks are always on the GPU.
-    - About 640MB of memory can be saved per double block, and about 320MB of memory can be saved per single block.
+    - `--blocks_to_swap` specify the number of blocks to swap. 
+    - About 640MB of memory can be saved per block.
+  - (Update 1: Nov 12, 2024) 
+    - The maximum number of blocks that can be swapped is 35.
+    - We are exchanging only the data of the weights (weight.data) in reference to the implementation of OneTrainer (thanks to OneTrainer). However, the mechanism of the exchange is a custom implementation.
+    - Since it takes time to free CUDA memory (torch.cuda.empty_cache()), we reuse the CUDA memory allocated to weight.data as it is and exchange the weights between modules.
+    - This shortens the time it takes to exchange weights between modules.
+    - Since the weights must be almost identical to be exchanged, FLUX.1 exchanges the weights between double blocks and single blocks.
+    - In SD3, all blocks are similar, but some weights are different, so there are weights that always remain on the GPU.
 
 2. Sample Image Generation:
    - Sample image generation during training is now supported.
    - The prompts are cached and used for generation if `--cache_latents` is specified. So changing the prompts during training will not affect the generated images.
    - Specify options such as `--sample_prompts` and `--sample_every_n_epochs`.
-   - Note: It will be very slow when `--split_mode` is specified.
+   - Note: It will be very slow when `--blocks_to_swap` is specified.
 
 3. Experimental Memory-Efficient Saving:
    - `--mem_eff_save` option can further reduce memory consumption during model saving (about 22GB).
@@ -488,53 +541,185 @@ python tools/convert_diffusers_to_flux.py --diffusers_path path/to/diffusers_fol
 
 ## SD3 training
 
-SD3 training is done with `sd3_train.py`. 
+SD3.5L/M training is now available. 
 
-__Sep 1, 2024__:
-- `--num_last_block_to_freeze` is added to `sd3_train.py`. This option is to freeze the last n blocks of the MMDiT. See [#1417](https://github.com/kohya-ss/sd-scripts/pull/1417) for details. Thanks to sdbds!
+### SD3 LoRA training
 
-__Jul  27, 2024__: 
-- Latents and text encoder outputs caching mechanism is refactored significantly. 
-  - Existing cache files for SD3 need to be recreated. Please delete the previous cache files. 
-  - With this change, dataset initialization is significantly faster, especially for large datasets. 
+The script is `sd3_train_network.py`. See `--help` for options. 
 
-- Architecture-dependent parts are extracted from the dataset (`train_util.py`). This is expected to make it easier to add future architectures.
+SD3 model, CLIP-L, CLIP-G, and T5XXL models are recommended to be in float/fp16 format. If you specify `--fp8_base`, you can use fp8 models for SD3. The fp8 model is only compatible with `float8_e4m3fn` format.
 
-- Architecture-dependent parts including the cache mechanism for SD1/2/SDXL are also extracted. The basic operation of SD1/2/SDXL training on the sd3 branch has been confirmed, but there may be bugs. Please use the main or dev branch for SD1/2/SDXL training.
+Sample command is below. It will work with 16GB VRAM GPUs (SD3.5L).
 
----
+```
+accelerate launch  --mixed_precision bf16 --num_cpu_threads_per_process 1 sd3_train_network.py 
+--pretrained_model_name_or_path path/to/sd3.5_large.safetensors --clip_l sd3/clip_l.safetensors --clip_g sd3/clip_g.safetensors --t5xxl sd3/t5xxl_fp16.safetensors 
+--cache_latents_to_disk --save_model_as safetensors --sdpa --persistent_data_loader_workers 
+--max_data_loader_n_workers 2 --seed 42 --gradient_checkpointing --mixed_precision bf16 --save_precision bf16 
+--network_module networks.lora_sd3 --network_dim 4 --network_train_unet_only 
+--optimizer_type adamw8bit --learning_rate 1e-4 
+--cache_text_encoder_outputs --cache_text_encoder_outputs_to_disk --fp8_base 
+--highvram --max_train_epochs 4 --save_every_n_epochs 1 --dataset_config dataset_1024_bs2.toml 
+--output_dir path/to/output/dir --output_name sd3-lora-name 
+```
+(The command is multi-line for readability. Please combine it into one line.)
 
-`fp16` and `bf16` are available for mixed precision training. We are not sure which is better.
+Like FLUX.1 training, the `--blocks_to_swap` option for memory reduction is available. The maximum number of blocks that can be swapped is 36 for SD3.5L and 22 for SD3.5M.
 
-`optimizer_type = "adafactor"` is recommended for 24GB VRAM GPUs. `cache_text_encoder_outputs_to_disk` and `cache_latents_to_disk` are necessary currently. 
+Adafactor optimizer is also available.
 
-`clip_l`, `clip_g` and `t5xxl` can be specified if the checkpoint does not include them.  
+`--cpu_offload_checkpointing` option is not available.
 
-t5xxl works with `fp16` now.
+We also not sure how many epochs are needed for convergence, and how the learning rate should be adjusted.
 
-There are `t5xxl_device` and `t5xxl_dtype` options for `t5xxl` device and dtype. 
+The trained LoRA model can be used with ComfyUI. 
 
-`text_encoder_batch_size` is added experimentally for caching faster.
+#### Key Options for SD3 LoRA training
 
-```toml
-learning_rate = 1e-6 # seems to depend on the batch size
-optimizer_type = "adafactor"
-optimizer_args = [ "scale_parameter=False", "relative_step=False", "warmup_init=False" ]
-cache_text_encoder_outputs = true
-cache_text_encoder_outputs_to_disk = true
-vae_batch_size = 1
-text_encoder_batch_size = 4
-cache_latents = true
-cache_latents_to_disk = true
+Here are the arguments. The arguments and sample settings are still experimental and may change in the future. Feedback on the settings is welcome.
+
+- `--network_module` is the module for LoRA training. Specify `networks.lora_sd3` for SD3 LoRA training.
+- `--pretrained_model_name_or_path` is the path to the pretrained model (SD3/3.5). If you specify `--fp8_base`, you can use fp8 models for SD3/3.5. The fp8 model is only compatible with `float8_e4m3fn` format.
+- `--clip_l` is the path to the CLIP-L model. 
+- `--clip_g` is the path to the CLIP-G model.
+- `--t5xxl` is the path to the T5XXL model. If you specify `--fp8_base`, you can use fp8 (float8_e4m3fn) models for T5XXL. However, it is recommended to use fp16 models for caching.
+- `--vae` is the path to the autoencoder model. __This option is not necessary for SD3.__ VAE is included in the standard SD3 model.
+- `--disable_mmap_load_safetensors` is to disable memory mapping when loading safetensors. __This option significantly reduces the memory usage when loading models for Windows users.__
+- `--clip_l_dropout_rate`, `--clip_g_dropout_rate` and `--t5_dropout_rate` are the dropout rates for the embeddings of CLIP-L, CLIP-G, and T5XXL, described in [SAI research papre](http://arxiv.org/pdf/2403.03206). The default is 0.0. For LoRA training, it is seems to be better to set 0.0.
+- `--pos_emb_random_crop_rate` is the rate of random cropping of positional embeddings, described in [SD3.5M model card](https://huggingface.co/stabilityai/stable-diffusion-3.5-medium). The default is 0. It is seems to be better to set 0.0 for LoRA training.
+- `--enable_scaled_pos_embed` is to enable the scaled positional embeddings. The default is False. This option is an experimental feature for SD3.5M. Details are described below.
+- `--training_shift` is the shift value for the training distribution of timesteps. The default is 1.0 (uniform distribution, no shift).  If less than 1.0, the side closer to the image is more sampled, and if more than 1.0, the side closer to noise is more sampled. 
+
+Other options are described below.
+
+#### Key Features for SD3 LoRA training
+
+1. CLIP-L, G and T5XXL LoRA Support:
+   - SD3 LoRA training now supports CLIP-L, CLIP-G and T5XXL LoRA training.
+   - Remove `--network_train_unet_only` from your command.
+   - Add `train_t5xxl=True` to `--network_args` to train T5XXL LoRA. CLIP-L and G is also trained at the same time.
+   - T5XXL output can be cached for CLIP-L and G LoRA training. So, `--cache_text_encoder_outputs` or `--cache_text_encoder_outputs_to_disk` is also available.
+   - The learning rates for CLIP-L, CLIP-G and T5XXL can be specified separately. Multiple numbers can be specified in `--text_encoder_lr`. For example, `--text_encoder_lr 1e-4 1e-5 5e-6`. The first value is the learning rate for CLIP-L, the second value is for CLIP-G, and the third value is for T5XXL. If you specify only one, the learning rates for CLIP-L, CLIP-G and T5XXL will be the same. If the third value is not specified, the second value is used for T5XXL. If `--text_encoder_lr` is not specified, the default learning rate `--learning_rate` is used for both CLIP-L and T5XXL.
+   - The trained LoRA can be used with ComfyUI.
+
+    | trained LoRA|option|network_args|cache_text_encoder_outputs (*1)|
+    |---|---|---|---|
+    |MMDiT|`--network_train_unet_only`|-|o|
+    |MMDiT + CLIP-L + CLIP-G|-|-|o (*2)|
+    |MMDiT + CLIP-L + CLIP-G + T5XXL|-|`train_t5xxl=True`|-|
+    |CLIP-L + CLIP-G (*3)|`--network_train_text_encoder_only`|-|o (*2)|
+    |CLIP-L + CLIP-G + T5XXL (*3)|`--network_train_text_encoder_only`|`train_t5xxl=True`|-|
+
+    - *1: `--cache_text_encoder_outputs` or `--cache_text_encoder_outputs_to_disk` is also available.
+    - *2: T5XXL output can be cached for CLIP-L and G LoRA training.
+    - *3: Not tested yet.
+
+2. Experimental FP8/FP16 mixed training:
+   - `--fp8_base_unet` enables training with fp8 for MMDiT and bf16/fp16 for CLIP-L/G/T5XXL.
+   - When specifying this option, the `--fp8_base` option is automatically enabled.
+
+3. Split Q/K/V Projection Layers (Experimental):
+   - Same as FLUX.1.
+   
+4. CLIP-L/G and T5 Attention Mask Application:
+   - This function is planned to be implemented in the future.
+   
+5. Multi-resolution Training Support:
+   - Only for SD3.5M. 
+   - Same as FLUX.1 for data preparation.
+   - If you train with multiple resolutions, you can enable the scaled positional embeddings with `--enable_scaled_pos_embed`. The default is False. __This option is an experimental feature.__
+
+6. Weighting scheme and training shift:
+   - The weighting scheme is described in the section 3.1 of the [SD3 paper](https://arxiv.org/abs/2403.03206v1). 
+   - The uniform distribution is the default. If you want to change the distribution, see `--help` for options. 
+   - `--training_shift` is the shift value for the training distribution of timesteps.
+   - The effect of a shift in uniform distribution is shown in the figure below.
+   - ![Figure_1](https://github.com/user-attachments/assets/99a72c67-adfb-4440-81d4-a718985ff350)
+
+Technical details of multi-resolution training for SD3.5M:
+
+SD3.5M does not use scaled positional embeddings for multi-resolution training, and is trained with a single positional embedding. Therefore, this feature is very experimental.
+
+Generally, in multi-resolution training, the values of the positional embeddings must be the same for each resolution. That is, the same value must be in the same position for 512x512, 768x768, and 1024x1024. To achieve this, the positional embeddings for each resolution are calculated in advance and switched according to the resolution of the training data. This feature is enabled by `--enable_scaled_pos_embed`.
+
+This idea and the code for calculating scaled positional embeddings are contributed by KohakuBlueleaf. Thanks to KohakuBlueleaf!
+
+
+#### Specify rank for each layer in SD3 LoRA
+
+You can specify the rank for each layer in SD3 by specifying the following network_args. If you specify `0`, LoRA will not be applied to that layer.
+
+When network_args is not specified, the default value (`network_dim`) is applied, same as before.
+
+|network_args|target layer|
+|---|---|
+|context_attn_dim|attn in context_block|
+|context_mlp_dim|mlp in context_block|
+|context_mod_dim|adaLN_modulation in context_block|
+|x_attn_dim|attn in x_block|
+|x_mlp_dim|mlp in x_block|
+|x_mod_dim|adaLN_modulation in x_block|
+
+`"verbose=True"` is also available for debugging. It shows the rank of each layer.
+
+example: 
+```
+--network_args "context_attn_dim=2" "context_mlp_dim=3" "context_mod_dim=4" "x_attn_dim=5" "x_mlp_dim=6" "x_mod_dim=7" "verbose=True"
 ```
 
-__2024/7/27:__
+You can apply LoRA to the conditioning layers of SD3 by specifying `emb_dims` in network_args. When specifying, be sure to specify 6 numbers in `[]` as a comma-separated list.
 
-Latents およびテキストエンコーダ出力のキャッシュの仕組みを大きくリファクタリングしました。SD3 用の既存のキャッシュファイルの再作成が必要になりますが、ご了承ください（以前のキャッシュファイルは削除してください）。これにより、特にデータセットの規模が大きい場合のデータセット初期化が大幅に高速化されます。
+example: 
+```
+--network_args "emb_dims=[2,3,4,5,6,7]"
+```
 
-データセット (`train_util.py`) からアーキテクチャ依存の部分を切り出しました。これにより将来的なアーキテクチャ追加が容易になると期待しています。
+Each number corresponds to `context_embedder`, `t_embedder`, `x_embedder`, `y_embedder`, `final_layer_adaLN_modulation`, `final_layer_linear`. The above example applies LoRA to all conditioning layers, with rank 2 for `context_embedder`, 3 for `t_embedder`, 4 for `context_embedder`, 5 for `y_embedder`, 6 for `final_layer_adaLN_modulation`, and 7 for `final_layer_linear`.
 
-SD1/2/SDXL のキャッシュ機構を含むアーキテクチャ依存の部分も切り出しました。sd3 ブランチの SD1/2/SDXL 学習について、基本的な動作は確認していますが、不具合があるかもしれません。SD1/2/SDXL の学習には main または dev ブランチをお使いください。
+If you specify `0`, LoRA will not be applied to that layer. For example, `[4,0,0,4,0,0]` applies LoRA only to `context_embedder` and `y_embedder`.
+
+#### Specify blocks to train in SD3 LoRA training
+
+You can specify the blocks to train in SD3 LoRA training by specifying `train_block_indices` in network_args. The indices are 0-based. The default (when omitted) is to train all blocks. The indices are specified as a list of integers or a range of integers, like `0,1,5,8` or `0,1,4-5,7`. 
+
+The number of blocks depends on the model. The valid range is 0-(the number of blocks - 1). `all` is also available to train all blocks, `none` is also available to train no blocks.
+
+example: 
+```
+--network_args "train_block_indices=1,2,6-8" 
+```
+
+### Inference for SD3 with LoRA model
+
+The inference script is also available. The script is `sd3_minimal_inference.py`. See `--help` for options. 
+
+### SD3 fine-tuning
+
+Documentation is not available yet. Please refer to the FLUX.1 fine-tuning guide for now. The major difference are following:
+
+- `--clip_g` is also available for SD3 fine-tuning.
+- `--timestep_sampling` `--discrete_flow_shift``--model_prediction_type` --guidance_scale` are not necessary for SD3 fine-tuning.
+- Use `--vae` instead of `--ae` if necessary. __This option is not necessary for SD3.__ VAE is included in the standard SD3 model.
+- `--disable_mmap_load_safetensors` is available. __This option significantly reduces the memory usage when loading models for Windows users.__
+- `--cpu_offload_checkpointing` is not available for SD3 fine-tuning.
+- `--clip_l_dropout_rate`, `--clip_g_dropout_rate` and `--t5_dropout_rate` are available same as LoRA training. 
+- `--pos_emb_random_crop_rate` and `--enable_scaled_pos_embed` are available for SD3.5M fine-tuning.
+- Training text encoders is available with `--train_text_encoder` option, similar to SDXL training.
+  - CLIP-L and G can be trained with `--train_text_encoder` option. Training T5XXL needs `--train_t5xxl` option.
+  - If you use the cached text encoder outputs for T5XXL with training CLIP-L and G, specify `--use_t5xxl_cache_only`. This option enables to use the cached text encoder outputs for T5XXL only.
+  - The learning rates for CLIP-L, CLIP-G and T5XXL can be specified separately. `--text_encoder_lr1`, `--text_encoder_lr2` and `--text_encoder_lr3` are available. 
+
+### Extract LoRA from SD3 Models
+
+Not available yet.
+
+### Convert SD3 LoRA
+
+Not available yet.
+
+### Merge LoRA to SD3 checkpoint
+
+Not available yet.
 
 --- 
 
@@ -542,6 +727,11 @@ SD1/2/SDXL のキャッシュ機構を含むアーキテクチャ依存の部分
 更新履歴は[ページ末尾](#change-history)に移しました。
 
 [日本語版READMEはこちら](./README-ja.md)
+
+The development version is in the `dev` branch. Please check the dev branch for the latest changes.
+
+FLUX.1 and SD3/SD3.5 support is done in the `sd3` branch. If you want to train them, please use the sd3 branch.
+
 
 For easier use (GUI and PowerShell scripts etc...), please visit [the repository maintained by bmaltais](https://github.com/bmaltais/kohya_ss). Thanks to @bmaltais!
 
@@ -678,8 +868,18 @@ The majority of scripts is licensed under ASL 2.0 (including codes from Diffuser
 ### Working in progress
 
 - __important__ The dependent libraries are updated. Please see [Upgrade](#upgrade) and update the libraries.
-  - transformers, accelerate and huggingface_hub are updated. 
+  - bitsandbytes, transformers, accelerate and huggingface_hub are updated. 
   - If you encounter any issues, please report them.
+
+- Fixed a bug where the loss weight was incorrect when `--debiased_estimation_loss` was specified with `--v_parameterization`. PR [#1715](https://github.com/kohya-ss/sd-scripts/pull/1715) Thanks to catboxanon! See [the PR](https://github.com/kohya-ss/sd-scripts/pull/1715) for details.
+  - Removed the warning when `--v_parameterization` is specified in SDXL and SD1.5. PR [#1717](https://github.com/kohya-ss/sd-scripts/pull/1717)
+
+- There was a bug where the min_bucket_reso/max_bucket_reso in the dataset configuration did not create the correct resolution bucket if it was not divisible by bucket_reso_steps. These values are now warned and automatically rounded to a divisible value. Thanks to Maru-mee for raising the issue. Related PR [#1632](https://github.com/kohya-ss/sd-scripts/pull/1632)
+
+- `bitsandbytes` is updated to 0.44.0. Now you can use `AdEMAMix8bit` and `PagedAdEMAMix8bit` in the training script. PR [#1640](https://github.com/kohya-ss/sd-scripts/pull/1640) Thanks to sdbds!
+  - There is no abbreviation, so please specify the full path like `--optimizer_type bitsandbytes.optim.AdEMAMix8bit` (not bnb but bitsandbytes).
+
+- Fixed a bug in the cache of latents. When `flip_aug`, `alpha_mask`, and `random_crop` are different in multiple subsets in the dataset configuration file (.toml), the last subset is used instead of reflecting them correctly.
 
 - Fixed an issue where the timesteps in the batch were the same when using Huber loss. PR [#1628](https://github.com/kohya-ss/sd-scripts/pull/1628) Thanks to recris!
 
@@ -844,6 +1044,21 @@ https://github.com/kohya-ss/sd-scripts/pull/1290) frodo821 氏に感謝します
 
 - `gen_imgs.py` のプロンプトオプションに、保存時のファイル名を指定する `--f` オプションを追加しました。また同スクリプトで Diffusers ベースのキーを持つ LoRA の重みに対応しました。
 
+
+### Oct 27, 2024 / 2024-10-27:
+
+- `svd_merge_lora.py` VRAM usage has been reduced. However, main memory usage will increase (32GB is sufficient).
+- This will be included in the next release.
+- `svd_merge_lora.py` のVRAM使用量を削減しました。ただし、メインメモリの使用量は増加します（32GBあれば十分です）。
+- これは次回リリースに含まれます。
+
+### Oct 26, 2024 / 2024-10-26: 
+
+- Fixed a bug in `svd_merge_lora.py`, `sdxl_merge_lora.py`, and `resize_lora.py` where the hash value of LoRA metadata was not correctly calculated when the `save_precision` was different from the  `precision` used in the calculation. See issue [#1722](https://github.com/kohya-ss/sd-scripts/pull/1722) for details. Thanks to JujoHotaru for raising the issue.
+- It will be included in the next release.
+
+- `svd_merge_lora.py`、`sdxl_merge_lora.py`、`resize_lora.py`で、保存時の精度が計算時の精度と異なる場合、LoRAメタデータのハッシュ値が正しく計算されない不具合を修正しました。詳細は issue [#1722](https://github.com/kohya-ss/sd-scripts/pull/1722) をご覧ください。問題提起していただいた JujoHotaru 氏に感謝します。
+- 以上は次回リリースに含まれます。
 
 ### Sep 13, 2024 / 2024-09-13: 
 

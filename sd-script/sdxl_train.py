@@ -6,7 +6,6 @@ import os
 from multiprocessing import Value
 from typing import List
 import toml
-from torch.optim.lr_scheduler import LambdaLR
 
 from tqdm import tqdm
 
@@ -49,54 +48,6 @@ from library.sdxl_original_unet import SdxlUNet2DConditionModel
 
 UNET_NUM_BLOCKS_FOR_BLOCK_LR = 23
 
-
-
-init_lr = 1.5e-6
-min_lr = 8e-7
-decay_step = 2
-
-# lr_rate_list = [(1, 40), (0.5, 40), (0.2, 40), (0.1, 40), (0.01, 40)]
-lr_rate_list = [(1.0, 30.0), (0.5, 30.0), (0.2, 20.0), (0.1, 20.0)]  # 100
-def my_lr_sheduler(optimizer, num_training_steps, cycle_steps, stage_list, last_epoch=-1, step_in=5, decay_in=10, min_rate=0):
-    """
-    Create a schedule with a learning rate that decreases linearly from the initial lr set in the optimizer to 0, after
-    a warmup period during which it increases linearly from 0 to the initial lr set in the optimizer.
-
-    Args:
-        optimizer ([`~torch.optim.Optimizer`]):
-            The optimizer for which to schedule the learning rate.
-        num_warmup_steps (`int`):
-            The number of steps for the warmup phase.
-        num_training_steps (`int`):
-            The total number of training steps.
-        last_epoch (`int`, *optional*, defaults to -1):
-            The index of the last epoch when resuming training.
-
-    Return:
-        `torch.optim.lr_scheduler.LambdaLR` with the appropriate schedule.
-    """
-    step = step_in
-    decay = decay_in
-
-    def lr_lambda(current_step: int):
-        # warm_steps = 10
-        # if current_step < warm_steps:
-        #     return 0.5
-        # total_steps = num_training_steps - warm_steps
-        # steps_per_s = math.ceil(total_steps / step)
-        # current_step2 = max(current_step - warm_steps, 0)
-        # c_step = int(current_step2 / steps_per_s)
-
-        # z = min(1.0, max(0.0, (float(current_step)/num_training_steps) - 0.8) / 0.2)
-        # r = 1 * (0.5 ** c_step)
-        # c = math.cos((float(current_step2) / steps_per_s) * 2.0 * math.pi*5.0) * 0.5 + 0.5
-        # r = r * (0.75 + (1.25 - 0.75) * c)
-        for (lr, s) in stage_list:
-            if (float(current_step) / num_training_steps) < (float(s) / cycle_steps):
-                return lr
-        return stage_list[-1][0]
-
-    return LambdaLR(optimizer, lr_lambda, last_epoch)
 
 def get_block_params_to_optimize(unet: SdxlUNet2DConditionModel, block_lrs: List[float]) -> List[dict]:
     block_params = [[] for _ in range(len(block_lrs))]
@@ -152,33 +103,9 @@ def train(args):
     deepspeed_utils.prepare_deepspeed_args(args)
     setup_logging(args, reset=True)
 
-
-    # add by RCB
-    # parse lr schedule
-    global lr_rate_list
-    schedule_l = args.cus_lr_schedule
-    if schedule_l:
-        schedule_l = schedule_l.strip().split(',')
-        try:
-            lr_rate_list = []
-            c = len(schedule_l)
-            for s in range(0, c, 2):
-                lr_rate_list.append((float(schedule_l[s]), float(schedule_l[s + 1])))
-        except:
-            ValueError("lr_schedule parse failed!!!!!")
-    print(lr_rate_list)
-    cycle_steps = 0
-    stage_list = []
-    for idx, (lr, steps) in enumerate(lr_rate_list):
-        cycle_steps += steps
-        stage_list.append((lr, cycle_steps))
-    ##TODO:DELETE
-    print("stage_list", stage_list)
-
-    # ^add by RCB
     assert (
-        not args.weighted_captions
-    ), "weighted_captions is not supported currently / weighted_captionsは現在サポートされていません"
+        not args.weighted_captions or not args.cache_text_encoder_outputs
+    ), "weighted_captions is not supported when caching text encoder outputs / cache_text_encoder_outputsを使うときはweighted_captionsはサポートされていません"
     assert (
         not args.train_text_encoder or not args.cache_text_encoder_outputs
     ), "cache_text_encoder_outputs is not supported when training text encoder / text encoderを学習するときはcache_text_encoder_outputsはサポートされていません"
@@ -204,7 +131,7 @@ def train(args):
     # prepare caching strategy: this must be set before preparing dataset. because dataset may use this strategy for initialization.
     if args.cache_latents:
         latents_caching_strategy = strategy_sd.SdSdxlLatentsCachingStrategy(
-            False, args.cache_latents_to_disk, args.vae_batch_size, False
+            False, args.cache_latents_to_disk, args.vae_batch_size, args.skip_cache_check
         )
         strategy_base.LatentsCachingStrategy.set_strategy(latents_caching_strategy)
 
@@ -345,7 +272,7 @@ def train(args):
         vae.requires_grad_(False)
         vae.eval()
 
-        train_dataset_group.new_cache_latents(vae, accelerator.is_main_process)
+        train_dataset_group.new_cache_latents(vae, accelerator)
 
         vae.to("cpu")
         clean_memory_on_device(accelerator.device)
@@ -394,14 +321,14 @@ def train(args):
         if args.cache_text_encoder_outputs:
             # Text Encodes are eval and no grad
             text_encoder_output_caching_strategy = strategy_sdxl.SdxlTextEncoderOutputsCachingStrategy(
-                args.cache_text_encoder_outputs_to_disk, None, False
+                args.cache_text_encoder_outputs_to_disk, None, False, is_weighted=args.weighted_captions
             )
             strategy_base.TextEncoderOutputsCachingStrategy.set_strategy(text_encoder_output_caching_strategy)
 
             text_encoder1.to(accelerator.device)
             text_encoder2.to(accelerator.device)
             with accelerator.autocast():
-                train_dataset_group.new_cache_text_encoder_outputs([text_encoder1, text_encoder2], accelerator.is_main_process)
+                train_dataset_group.new_cache_text_encoder_outputs([text_encoder1, text_encoder2], accelerator)
 
         accelerator.wait_for_everyone()
 
@@ -695,18 +622,13 @@ def train(args):
         accelerator.log({}, step=0)
 
     loss_recorder = train_util.LossRecorder()
-    #Add By RCB
-    true_step = 0
-    #^Add By RCB
     for epoch in range(num_train_epochs):
         accelerator.print(f"\nepoch {epoch+1}/{num_train_epochs}")
         current_epoch.value = epoch + 1
 
         for m in training_models:
             m.train()
-        #Add By RCB
-        loss_total = 0
-        #^Add By RCB
+
         for step, batch in enumerate(train_dataloader):
             current_step.value = global_step
 
@@ -738,22 +660,24 @@ def train(args):
                     input_ids1, input_ids2 = batch["input_ids_list"]
                     with torch.set_grad_enabled(args.train_text_encoder):
                         # Get the text embedding for conditioning
-                        # TODO support weighted captions
-                        # if args.weighted_captions:
-                        #     encoder_hidden_states = get_weighted_text_embeddings(
-                        #         tokenizer,
-                        #         text_encoder,
-                        #         batch["captions"],
-                        #         accelerator.device,
-                        #         args.max_token_length // 75 if args.max_token_length else 1,
-                        #         clip_skip=args.clip_skip,
-                        #     )
-                        # else:
-                        input_ids1 = input_ids1.to(accelerator.device)
-                        input_ids2 = input_ids2.to(accelerator.device)
-                        encoder_hidden_states1, encoder_hidden_states2, pool2 = text_encoding_strategy.encode_tokens(
-                            tokenize_strategy, [text_encoder1, text_encoder2], [input_ids1, input_ids2]
-                        )
+                        if args.weighted_captions:
+                            input_ids_list, weights_list = tokenize_strategy.tokenize_with_weights(batch["captions"])
+                            encoder_hidden_states1, encoder_hidden_states2, pool2 = (
+                                text_encoding_strategy.encode_tokens_with_weights(
+                                    tokenize_strategy,
+                                    [text_encoder1, text_encoder2, accelerator.unwrap_model(text_encoder2)],
+                                    input_ids_list,
+                                    weights_list,
+                                )
+                            )
+                        else:
+                            input_ids1 = input_ids1.to(accelerator.device)
+                            input_ids2 = input_ids2.to(accelerator.device)
+                            encoder_hidden_states1, encoder_hidden_states2, pool2 = text_encoding_strategy.encode_tokens(
+                                tokenize_strategy,
+                                [text_encoder1, text_encoder2, accelerator.unwrap_model(text_encoder2)],
+                                [input_ids1, input_ids2],
+                            )
                         if args.full_fp16:
                             encoder_hidden_states1 = encoder_hidden_states1.to(weight_dtype)
                             encoder_hidden_states2 = encoder_hidden_states2.to(weight_dtype)
@@ -771,9 +695,7 @@ def train(args):
 
                 # Sample noise, sample a random timestep for each image, and add noise to the latents,
                 # with noise offset and/or multires noise if specified
-                noise, noisy_latents, timesteps, huber_c = train_util.get_noise_noisy_latents_and_timesteps(
-                    args, noise_scheduler, latents
-                )
+                noise, noisy_latents, timesteps = train_util.get_noise_noisy_latents_and_timesteps(args, noise_scheduler, latents)
 
                 noisy_latents = noisy_latents.to(weight_dtype)  # TODO check why noisy_latents is not weight_dtype
 
@@ -787,6 +709,7 @@ def train(args):
                 else:
                     target = noise
 
+                huber_c = train_util.get_huber_threshold_if_needed(args, timesteps, noise_scheduler)
                 if (
                     args.min_snr_gamma
                     or args.scale_v_pred_loss_like_noise_pred
@@ -795,9 +718,7 @@ def train(args):
                     or args.masked_loss
                 ):
                     # do not mean over batch dimension for snr weight or scale v-pred loss
-                    loss = train_util.conditional_loss(
-                        noise_pred.float(), target.float(), reduction="none", loss_type=args.loss_type, huber_c=huber_c
-                    )
+                    loss = train_util.conditional_loss(noise_pred.float(), target.float(), args.loss_type, "none", huber_c)
                     if args.masked_loss or ("alpha_masks" in batch and batch["alpha_masks"] is not None):
                         loss = apply_masked_loss(loss, batch)
                     loss = loss.mean([1, 2, 3])
@@ -809,13 +730,11 @@ def train(args):
                     if args.v_pred_like_loss:
                         loss = add_v_prediction_like_loss(loss, timesteps, noise_scheduler, args.v_pred_like_loss)
                     if args.debiased_estimation_loss:
-                        loss = apply_debiased_estimation(loss, timesteps, noise_scheduler)
+                        loss = apply_debiased_estimation(loss, timesteps, noise_scheduler, args.v_parameterization)
 
                     loss = loss.mean()  # mean over batch dimension
                 else:
-                    loss = train_util.conditional_loss(
-                        noise_pred.float(), target.float(), reduction="mean", loss_type=args.loss_type, huber_c=huber_c
-                    )
+                    loss = train_util.conditional_loss(noise_pred.float(), target.float(), args.loss_type, "mean", huber_c)
 
                 accelerator.backward(loss)
 
@@ -827,7 +746,7 @@ def train(args):
                         accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
 
                     optimizer.step()
-                    #lr_scheduler.step()
+                    lr_scheduler.step()
                     optimizer.zero_grad(set_to_none=True)
                 else:
                     # optimizer.step() and optimizer.zero_grad() are called in the optimizer hook
@@ -895,7 +814,7 @@ def train(args):
 
             if global_step >= args.max_train_steps:
                 break
-        lr_scheduler.step()
+
         if len(accelerator.trackers) > 0:
             logs = {"loss/epoch": loss_recorder.moving_average}
             accelerator.log(logs, step=epoch + 1)
