@@ -39,7 +39,10 @@ class ApiPage(TabBase):
         self.btn_stop_db.click(fn=lambda: self.cmd_executor.kill_command(), api_name="stop_db")
 
         def btn_run_api_click(cfg_obj):
-            self.cmd_executor.execute_command(data_set_cmd_maker.make_lora_cmd(cfg_obj))
+            if cfg_obj["is_flux"]:
+                self.cmd_executor.execute_command(data_set_cmd_maker.make_flux_lora_cmd(cfg_obj))
+            else:
+                self.cmd_executor.execute_command(data_set_cmd_maker.make_lora_cmd(cfg_obj))
 
         self.btn_run_lora.click(fn=btn_run_api_click, inputs=[self.json_cmd_json], api_name="train_lora")
 
@@ -47,8 +50,11 @@ class ApiPage(TabBase):
 
         def btn_print_lora_cmd_click(cfg_obj):
             print("=====================CmdPreview=======================")
-            print(data_set_cmd_maker.make_lora_cmd(cfg_obj))
-            print("======================================================")
+            if cfg_obj["is_flux"]:
+                print(data_set_cmd_maker.make_flux_lora_cmd(cfg_obj))
+            else:
+                print(data_set_cmd_maker.make_lora_cmd(cfg_obj))
+                print("======================================================")
 
         self.btn_print_lora_cmd.click(fn=btn_print_lora_cmd_click, inputs=[self.json_cmd_json],
                                       api_name="print_lora_cmd")

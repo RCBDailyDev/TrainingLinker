@@ -10,6 +10,8 @@ from PIL import Image
 import datetime
 
 
+
+
 def parse_param(s):
     p_list = s.split(',')
     if len(p_list) == 2:
@@ -211,6 +213,9 @@ def make_flux_lora_cmd(cfg_obj):
 
     cmd += " \"" + os.path.join(os.getcwd(), "sd-script", "flux_train_network.py") + "\""
 
+    cmd += " --clip_l={}".format(cfg_obj["clip_l"])
+    cmd += " --t5xxl={}".format(cfg_obj["t5xxl"])
+    cmd += " --apply_t5_attn_mask"
 
     cmd += f" --bucket_no_upscale"
     cmd += f" --network_module=\"networks.lora_flux\""
@@ -235,7 +240,8 @@ def make_flux_lora_cmd(cfg_obj):
     if cfg_obj["optimizer"] == "Prodigy":
         cmd += " --learning_rate=\"{}\"".format(1)
         cmd += " --text_encoder_lr=\"{}\"".format(1)
-        cmd += " --optimizer_args {}".format("weight_decay=0.01 betas=.9,.99 decouple=True use_bias_correction=True d_coef=0.5 d0=1e-5")
+        d0 = cfg_obj["d0"]
+        cmd += " --optimizer_args {}".format(f"weight_decay=0.01 betas=.9,.99 decouple=True use_bias_correction=True d_coef=0.5 d0={d0}")
     else:
         cmd += " --learning_rate=\"{}\"".format(cfg_obj["learning_rate"])
         cmd += " --unet_lr=\"{}\"".format(cfg_obj["learning_rate"])
@@ -243,7 +249,7 @@ def make_flux_lora_cmd(cfg_obj):
     cmd += " --logging_dir=\"{}\"".format(cfg_obj["logging_dir"])
     cmd += " --lr_scheduler=\"{}\"".format("constant")
     cmd += " --lr_scheduler_num_cycles=\"{}\"".format(1)
-    cmd += " --max_data_loader_n_workers=\"{}\"".format(0)
+    #cmd += " --max_data_loader_n_workers=\"{}\"".format(0)
     cmd += " --resolution=\"{}\"".format(cfg_obj["max_resolution"])
     cmd += " --max_train_epochs={}".format(cfg_obj["max_train_epochs"])
     cmd += " --min_snr_gamma={}".format(cfg_obj["min_snr_gamma"])
@@ -284,12 +290,24 @@ def make_flux_lora_cmd(cfg_obj):
     if cfg_obj["ch_debug_dataset"]:
         cmd += f" --debug_dataset"
 
-    cmd += " --clip_l=./clip/clip_l.safetensors"
-    cmd += " --t5xxl=./clip/t5xxl_fp16.safetensors"
-    cmd += " --apply_t5_attn_mask"
-    cmd += " --model_prediction_type=raw --guidance_scale=1 --guidance_rescale"
-    cmd += " --network_train_unet_only"
-    cmd += " --fp8_base"
+    cmd += " --discrete_flow_shift=3.185"
+    cmd += " --timestep_sampling=flux_shift"
+    cmd += " --sigmoid_scale=1"
+    cmd += " --model_prediction_type=raw"
+    cmd += " --guidance_scale=1"
+    #cmd += " --guidance_rescale"
+    cmd += " --cache_text_encoder_outputs"
+    cmd += " --sdpa"
+    cmd += " --clip_skip=2"
+    cmd += " --persistent_data_loader_workers"
+    cmd += " --fp8_base_unet"
+    cmd += " --gradient_accumulation_steps=1"
+    cmd += " --cache_latents_to_disk"
+    cmd += " --cache_text_encoder_outputs"
+    cmd += " --cache_text_encoder_outputs_to_disk"
+
+
+
 
 
     return cmd
