@@ -219,12 +219,12 @@ def make_flux_lora_cmd(cfg_obj):
 
     cmd += f" --bucket_no_upscale"
     cmd += f" --network_module=\"networks.lora_flux\""
-    cmd += f" --bucket_reso_steps={256}"
+    cmd += f" --bucket_reso_steps={64}"
     cmd += f" --cache_latents"
     cmd += f" --caption_extension=\".txt\""
     cmd += f" --enable_bucket"
-    cmd += f" --min_bucket_reso={768}"
-    cmd += f" --max_bucket_reso={1024}"
+    cmd += f" --min_bucket_reso={640}"
+    cmd += f" --max_bucket_reso={1536}"
 
     if cfg_obj["mixed_precision"] == "fp16":
         cmd += f" --mixed_precision=\"fp16\""

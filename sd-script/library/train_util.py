@@ -1097,7 +1097,6 @@ class BaseDataset(torch.utils.data.Dataset):
             logger.info("caching latents...")
             for i, info in enumerate(tqdm(image_infos)):
                 subset = self.image_to_subset[info.image_key]
-                logger.info(info.image_key)
                 if info.latents_npz is not None:  # fine tuning dataset
                     continue
 
