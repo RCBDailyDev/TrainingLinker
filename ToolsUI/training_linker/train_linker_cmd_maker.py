@@ -10,8 +10,6 @@ from PIL import Image
 import datetime
 
 
-
-
 def parse_param(s):
     p_list = s.split(',')
     if len(p_list) == 2:
@@ -54,7 +52,14 @@ def make_prompt_file(sample_path):
             img_path = find_image(txt_path)
             if img_path:
                 img = Image.open(img_path)
-                info_dic = {'width': img.width, 'height': img.height, 'scale': 7, 'negative_prompt': negative_prompt,
+                max_img_size = max(img.width, img.height)
+                rate = 1216 / max_img_size
+                sample_width = img.width
+                sample_height = img.height
+                if rate < 1:
+                    sample_width = int(sample_width * rate)
+                    sample_height = int(sample_height * rate)
+                info_dic = {'width': sample_width, 'height': sample_height, 'scale': 7, 'negative_prompt': negative_prompt,
                             'sample_steps': 20}
                 if not os.path.exists(txt_path):
                     raise ValueError("img_path has np caption")
@@ -217,6 +222,17 @@ def make_flux_lora_cmd(cfg_obj):
     cmd += " --t5xxl={}".format(cfg_obj["t5xxl"])
     cmd += " --apply_t5_attn_mask"
 
+    # cmd += " --network_args"
+    # cmd += " \"img_attn_dim = 4\""
+    # cmd += " \"txt_attn_dim = 4\""
+    # cmd += " \"img_mlp_dim = 4\""
+    # cmd += " \"txt_mlp_dim = 4\""
+    # cmd += " \"img_mod_dim0 = 0\""
+    # cmd += " \"txt_mod_dim = 0\""
+    # cmd += " \"single_dim = 4\""
+    # cmd += " \"single_mod_dim = 0\""
+    # cmd += " \"in_dims = 4, 0, 0, 0, 4\""
+
     cmd += f" --bucket_no_upscale"
     cmd += f" --network_module=\"networks.lora_flux\""
     cmd += f" --bucket_reso_steps={64}"
@@ -237,19 +253,11 @@ def make_flux_lora_cmd(cfg_obj):
     cmd += " --network_dim={}".format(cfg_obj["network_dim"])
     cmd += " --network_alpha={}".format(cfg_obj["network_alpha"])
     cmd += " --gradient_checkpointing"
-    if cfg_obj["optimizer"] == "Prodigy":
-        cmd += " --learning_rate=\"{}\"".format(1)
-        cmd += " --text_encoder_lr=\"{}\"".format(1)
-        d0 = cfg_obj["d0"]
-        cmd += " --optimizer_args {}".format(f"weight_decay=0.01 betas=.9,.99 decouple=True use_bias_correction=True d_coef=0.5 d0={d0}")
-    else:
-        cmd += " --learning_rate=\"{}\"".format(cfg_obj["learning_rate"])
-        cmd += " --unet_lr=\"{}\"".format(cfg_obj["learning_rate"])
-        cmd += " --text_encoder_lr=\"{}\"".format(cfg_obj["text_encoder_lr"])
+
     cmd += " --logging_dir=\"{}\"".format(cfg_obj["logging_dir"])
     cmd += " --lr_scheduler=\"{}\"".format("constant")
     cmd += " --lr_scheduler_num_cycles=\"{}\"".format(1)
-    #cmd += " --max_data_loader_n_workers=\"{}\"".format(0)
+    # cmd += " --max_data_loader_n_workers=\"{}\"".format(0)
     cmd += " --resolution=\"{}\"".format(cfg_obj["max_resolution"])
     cmd += " --max_train_epochs={}".format(cfg_obj["max_train_epochs"])
     cmd += " --min_snr_gamma={}".format(cfg_obj["min_snr_gamma"])
@@ -261,6 +269,26 @@ def make_flux_lora_cmd(cfg_obj):
         cmd += " --adaptive_noise_scale=\"{}\"".format(cfg_obj["adaptive_noise_scale"])
 
     cmd += " --optimizer_type=\"{}\"".format(cfg_obj["optimizer"])
+
+    if cfg_obj["optimizer"] == "Prodigy":
+        cmd += " --learning_rate=\"{}\"".format(1)
+        cmd += " --text_encoder_lr=\"{}\"".format(1)
+        d0 = cfg_obj["d0"]
+        cmd += " --optimizer_args {}".format(
+            f"weight_decay=0.01 betas=.9,.99 decouple=True use_bias_correction=True d_coef=1.0 d0={d0}")
+    elif cfg_obj["optimizer"] == "adafactor":
+        cmd += " --optimizer_args {} ".format(
+            "\"relative_step=False\" \"scale_parameter=False\" \"warmup_init=False\" ")
+        cmd += " --lr_scheduler cosine"
+        cmd += " --max_grad_norm 0.0"
+        cmd += " --learning_rate=\"{}\"".format(cfg_obj["learning_rate"])
+        cmd += " --unet_lr=\"{}\"".format(cfg_obj["learning_rate"])
+        cmd += " --text_encoder_lr=\"{}\"".format(cfg_obj["text_encoder_lr"])
+    else:
+        cmd += " --learning_rate=\"{}\"".format(cfg_obj["learning_rate"])
+        cmd += " --unet_lr=\"{}\"".format(cfg_obj["learning_rate"])
+        cmd += " --text_encoder_lr=\"{}\"".format(cfg_obj["text_encoder_lr"])
+
     cmd += " --output_dir=\"{}\"".format(cfg_obj["output_dir"])
     cmd += " --output_name=\"{}\"".format(cfg_obj["output_name"])
     cmd += " --pretrained_model_name_or_path=\"{}\"".format(cfg_obj["base_model"])
@@ -295,20 +323,17 @@ def make_flux_lora_cmd(cfg_obj):
     cmd += " --sigmoid_scale=1"
     cmd += " --model_prediction_type=raw"
     cmd += " --guidance_scale=1"
-    #cmd += " --guidance_rescale"
-    cmd += " --cache_text_encoder_outputs"
+    # cmd += " --guidance_rescale"
     cmd += " --sdpa"
-    cmd += " --clip_skip=2"
+    # cmd += " --clip_skip=2"
     cmd += " --persistent_data_loader_workers"
     cmd += " --fp8_base_unet"
     cmd += " --gradient_accumulation_steps=1"
     cmd += " --cache_latents_to_disk"
     cmd += " --cache_text_encoder_outputs"
     cmd += " --cache_text_encoder_outputs_to_disk"
-
-
-
-
+    cmd += " --network_train_unet_only"
+    # cmd += f" --caption_tag_dropout_rate={0.5}"
 
     return cmd
 
@@ -396,7 +421,6 @@ def make_lora_cmd(cfg_obj):
 
     cmd += f" --caption_tag_dropout_rate={0.5}"
     return cmd
-
 
 
 def make_extract_lora_from_model_cmd(cfg_obj):
