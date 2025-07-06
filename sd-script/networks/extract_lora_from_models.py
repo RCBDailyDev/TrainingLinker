@@ -5,8 +5,6 @@
 import argparse
 import json
 import os
-import sys
-sys.path.append(os.path.join(os.getcwd(), "sd-script"))
 import time
 import torch
 from safetensors.torch import load_file, save_file

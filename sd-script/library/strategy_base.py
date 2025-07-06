@@ -99,17 +99,17 @@ class TokenizeStrategy:
             \] - literal character ']'
             \\ - literal character '\'
             anything else - just text
-            >>> parse_prompt_attention('normal text')
+            parse_prompt_attention('normal text')
             [['normal text', 1.0]]
-            >>> parse_prompt_attention('an (important) word')
+             parse_prompt_attention('an (important) word')
             [['an ', 1.0], ['important', 1.1], [' word', 1.0]]
-            >>> parse_prompt_attention('(unbalanced')
+            parse_prompt_attention('(unbalanced')
             [['unbalanced', 1.1]]
-            >>> parse_prompt_attention('\(literal\]')
+            parse_prompt_attention('\(literal\]')
             [['(literal]', 1.0]]
-            >>> parse_prompt_attention('(unnecessary)(parens)')
+            parse_prompt_attention('(unnecessary)(parens)')
             [['unnecessaryparens', 1.1]]
-            >>> parse_prompt_attention('a (((house:1.3)) [on] a (hill:0.5), sun, (((sky))).')
+            parse_prompt_attention('a (((house:1.3)) [on] a (hill:0.5), sun, (((sky))).')
             [['a ', 1.0],
             ['house', 1.5730000000000004],
             [' ', 1.1],
@@ -480,15 +480,16 @@ class LatentsCachingStrategy:
             image_infos, alpha_mask, random_crop
         )
         img_tensor = img_tensor.to(device=vae_device, dtype=vae_dtype)
+
         with torch.no_grad():
             latents_tensors = encode_by_vae(img_tensor).to("cpu")
-
         if flip_aug:
             img_tensor = torch.flip(img_tensor, dims=[3])
             with torch.no_grad():
                 flipped_latents = encode_by_vae(img_tensor).to("cpu")
         else:
             flipped_latents = [None] * len(latents_tensors)
+
         # for info, latents, flipped_latent, alpha_mask in zip(image_infos, latents_tensors, flipped_latents, alpha_masks):
         for i in range(len(image_infos)):
             info = image_infos[i]
